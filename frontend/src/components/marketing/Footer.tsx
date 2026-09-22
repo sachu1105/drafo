@@ -4,7 +4,7 @@ const COLUMNS: { heading: string; links: { label: string; href: string }[] }[] =
   {
     heading: "Product",
     links: [
-      { label: "Why Atelier", href: "/#problem" },
+      { label: "Why Drafo", href: "/#problem" },
       { label: "How it works", href: "/#how" },
       { label: "Features", href: "/#features" },
       { label: "For your client", href: "/#client" },
@@ -48,7 +48,7 @@ export function Footer() {
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="font-display text-[1.375rem] leading-none tracking-tight">
-              Atelier
+              Drafo
             </p>
             <p className="mt-3 max-w-[26ch] text-[0.8125rem] leading-relaxed text-sand">
               A private portal between a practice and one client, for one
@@ -78,7 +78,7 @@ export function Footer() {
 
         <div className="mt-14 flex flex-wrap items-center justify-between gap-3 border-t border-paper/20 pt-6">
           <p className="text-[0.8125rem] text-sand/85">
-            © {new Date().getFullYear()} Atelier
+            © {new Date().getFullYear()} Drafo
           </p>
           <p className="text-[0.8125rem] text-sand/85">
             Your client never needs an account.

@@ -1,4 +1,4 @@
-# Atelier
+# Drafo
 
 A private portal an architect shares with one client for one project.
 
@@ -6,7 +6,7 @@ It exists to fix four specific failures of running a project on WhatsApp and
 Google Drive:
 
 1. **Approvals evaporate.** The client approves a drawing in a voice note and
-   denies it six months later. Atelier records approvals with a name and a
+   denies it six months later. Drafo records approvals with a name and a
    timestamp, and never lets that record be edited.
 2. **Five PDFs are all called "plan".** Drawings live in named sets with
    numbered revisions. The current one is unmistakable; the old ones stay.

@@ -1,5 +1,5 @@
 """
-Django settings for Atelier.
+Django settings for Drafo.
 
 Single app (`portal`), single tenant-per-architect domain. Keep this file
 boring: anything clever here becomes a support ticket later.
@@ -185,7 +185,7 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
 
 # --- email ---
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Atelier <no-reply@localhost>")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Drafo <no-reply@localhost>")
 if os.environ.get("EMAIL_HOST"):
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = os.environ["EMAIL_HOST"]

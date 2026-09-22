@@ -20,7 +20,7 @@ const body = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Atelier",
+  title: "Drafo",
   description: "A private portal between an architect and their client.",
 };
 

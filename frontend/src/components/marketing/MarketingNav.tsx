@@ -38,7 +38,7 @@ export function MarketingNav() {
           className="flex min-h-[44px] shrink-0 items-center font-display
                      text-[1.375rem] leading-none tracking-tight"
         >
-          Atelier
+          Drafo
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">

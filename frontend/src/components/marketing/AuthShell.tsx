@@ -24,7 +24,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
                        leading-none tracking-tight transition-opacity duration-150
                        hover:opacity-70"
           >
-            Atelier
+            Drafo
           </Link>
         </div>
       </header>

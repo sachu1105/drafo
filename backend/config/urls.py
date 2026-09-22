@@ -10,6 +10,6 @@ urlpatterns = [
     path("api/", include("portal.urls")),
 ]
 
-admin.site.site_header = "Atelier"
-admin.site.site_title = "Atelier"
+admin.site.site_header = "Drafo"
+admin.site.site_title = "Drafo"
 admin.site.index_title = "Support console"

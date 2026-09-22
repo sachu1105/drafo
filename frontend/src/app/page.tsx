@@ -28,7 +28,7 @@ import { MarketingNav } from "@/components/marketing/MarketingNav";
  */
 
 export const metadata: Metadata = {
-  title: "Atelier — the drawing your client approved, on the record",
+  title: "Drafo — the drawing your client approved, on the record",
   description:
     "A private project portal for architects, engineers and interior designers. "
     + "Share drawings, capture timestamped approvals, and keep materials and "
@@ -116,7 +116,7 @@ function Hero() {
             <Image
               src="/heroimageone.png"
               alt={
-                "One project in Atelier, with drawings, materials, payment "
+                "One project in Drafo, with drawings, materials, payment "
                 + "milestones and client access branching off it."
               }
               width={1536}
@@ -183,7 +183,7 @@ function Problem() {
           What running a project on WhatsApp actually costs
         </h2>
         <p className="mt-5 max-w-reading text-[1.0625rem] leading-relaxed text-muted">
-          Atelier fixes exactly these four things. It deliberately does nothing
+          Drafo fixes exactly these four things. It deliberately does nothing
           else.
         </p>
 
@@ -361,7 +361,7 @@ function ClientSide() {
               Your client is often in their fifties, sometimes abroad, and has
               no interest in learning software. The moment a tool asks them to
               create an account, they say “just send it on WhatsApp”.
-              So Atelier never asks.
+              So Drafo never asks.
             </p>
           </div>
         </div>

@@ -64,7 +64,7 @@ PNG = png_bytes()
 PDF = pdf_bytes()
 
 
-MEDIA_SANDBOX = tempfile.mkdtemp(prefix="atelier-tests-")
+MEDIA_SANDBOX = tempfile.mkdtemp(prefix="drafo-tests-")
 
 
 class MediaSandbox(TestCase):
