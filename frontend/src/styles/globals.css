@@ -13,10 +13,14 @@
     line-height: 1.65;
   }
 
-  /* Nothing on the client's phone may ever scroll sideways. */
+  /* Nothing on the client's phone may ever scroll sideways.
+     `clip` rather than `hidden`: hidden makes the element a scroll container,
+     and a scroll container is what `position: sticky` sticks inside -- so a
+     sticky panel anywhere in the page silently stops sticking. `clip` cuts
+     the overflow off without creating one. */
   html,
   body {
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   ::selection {
@@ -41,6 +45,19 @@
     font-size: 16px;
   }
 
+  /* The stepper arrows on a number input are the single most dated-looking
+     control the browser ships, they differ on every OS, and nobody has ever
+     entered a price by clicking one. */
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
   :focus-visible {
     outline: 2px solid #4e635e;
     outline-offset: 2px;
@@ -62,19 +79,55 @@
            placeholder:text-faint focus:border-brand focus:outline-none;
   }
 
+  /* A select that matches the inputs beside it. The native control renders
+     with the OS chrome -- rounded on macOS, beveled on Windows -- and sitting
+     in a row of square fields it is the one thing that looks borrowed. */
+  .select {
+    @apply field cursor-pointer appearance-none bg-no-repeat pr-10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%237E8878' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E");
+    background-position: right 0.875rem center;
+    background-size: 12px 12px;
+  }
+
+  /* An input with a fixed prefix or suffix welded to it -- a currency mark, a
+     unit. One border around the pair, so it reads as one control. */
+  .field-affix {
+    @apply flex items-stretch border border-rule bg-card
+           focus-within:border-brand;
+  }
+
+  .field-affix-mark {
+    @apply flex shrink-0 select-none items-center border-r border-ruleSoft
+           bg-paper px-3.5 text-[0.875rem] text-faint;
+  }
+
+  .field-affix-input {
+    @apply min-w-0 flex-1 bg-transparent px-3.5 py-3 text-ink
+           placeholder:text-faint focus:outline-none;
+  }
+
   /* Every tappable thing clears 44px, because it is tapped with a thumb. */
   .btn {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 px-5 py-3
            text-[0.9375rem] font-medium transition-colors duration-150
-           disabled:cursor-not-allowed disabled:opacity-40;
+           disabled:cursor-not-allowed;
   }
 
+  /* A disabled primary used to be the filled button at 40% opacity, which is
+     a washed-out grey slab that reads as broken rather than as not-yet. It is
+     now an outline: visibly the same button, visibly not ready. The outline is
+     an inset shadow rather than a border so the box does not resize. */
   .btn-primary {
-    @apply btn bg-brand text-paper hover:bg-brandDark;
+    @apply btn bg-brand text-paper hover:bg-brandDark
+           disabled:bg-transparent disabled:text-faint
+           disabled:shadow-[inset_0_0_0_1px_#CBD1C0]
+           disabled:hover:bg-transparent;
   }
 
   .btn-quiet {
-    @apply btn border border-rule bg-card text-ink hover:border-brand;
+    @apply btn border border-rule bg-card text-ink hover:border-brand
+           disabled:border-ruleSoft disabled:text-faint
+           disabled:hover:border-ruleSoft;
   }
 
   .btn-text {

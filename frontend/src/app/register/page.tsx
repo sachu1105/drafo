@@ -17,6 +17,7 @@ import { register } from "@/lib/auth";
  */
 export default function RegisterPage() {
   const [form, setForm] = useState({
+    full_name: "",
     practice_name: "",
     email: "",
     phone: "",
@@ -79,6 +80,20 @@ export default function RegisterPage() {
       </p>
 
       <form onSubmit={submit} className="mt-10 space-y-6">
+        {/* Your name first, then the studio's. Asking only for a "practice
+            name" is how a one-person studio ends up with their own name in a
+            box labelled practice, and then meets a settings page that never
+            mentions them. */}
+        <Field label="Your name" hint="The person your client is dealing with">
+          <input
+            type="text"
+            value={form.full_name}
+            onChange={set("full_name")}
+            autoComplete="name"
+            className="field"
+          />
+        </Field>
+
         <Field
           label="Practice name"
           hint="This appears at the top of every screen your client sees"

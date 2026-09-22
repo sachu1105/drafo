@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CommentThread } from "@/components/CommentThread";
+import { Empty, FormActions, FormCard } from "@/components/architect/Form";
 import { FileField } from "@/components/architect/FileField";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatDateTime, formatSize } from "@/lib/format";
@@ -60,47 +61,44 @@ export function DrawingsTab({
     <div>
       <h2 className="sr-only">Drawings</h2>
 
-      {/* One next step, stated plainly. Which one depends on where the
-          project actually is -- offering all of them at once would just be
-          four buttons and no guidance. */}
-      {sets !== null && list.length > 0 ? (
-        firstEmpty ? (
-          <NextStep
-            action="Upload a drawing"
-            onAction={() => setOpenId(firstEmpty.id)}
-          >
-            <strong className="font-medium text-ink">{firstEmpty.title}</strong>{" "}
-            has no drawing in it yet. {clientName} sees nothing until you
-            upload one.
-          </NextStep>
-        ) : awaiting.length > 0 ? (
-          <NextStep tone="waiting">
+      {/* A status line, not a banner.
+
+          It used to be a bordered box with its own button, sitting directly
+          above a card that said the same thing and already had the upload
+          zone open inside it: three ways to start the same upload, stacked.
+          The line below only appears when it says something the cards below
+          do not, and it carries an action only when that action is somewhere
+          else on the page. */}
+      {sets !== null && list.length > 0 && !firstEmpty ? (
+        awaiting.length > 0 ? (
+          <p className="mb-5 text-[0.875rem] text-muted">
             Waiting on {clientName} to approve{" "}
             {awaiting.length === 1
               ? awaiting[0].title
               : `${awaiting.length} drawings`}
-            . You will be emailed when they do.
-          </NextStep>
+            .
+          </p>
         ) : (
-          <NextStep action="Send the link" onAction={onShare}>
-            Everything here is approved. Send {clientName} the link whenever
-            you add something new.
-          </NextStep>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+            <p className="text-[0.875rem] text-muted">
+              Everything here is approved.
+            </p>
+            {onShare ? (
+              <button type="button" onClick={onShare} className="btn-text px-0">
+                Send {clientName} the link
+              </button>
+            ) : null}
+          </div>
         )
       ) : null}
 
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <p className="text-[0.8125rem] text-muted">
-          {list.length > 0
-            ? `${list.length} ${list.length === 1 ? "drawing" : "drawings"}`
-            : ""}
-        </p>
-        {!adding && list.length > 0 ? (
+      {!adding && list.length > 0 ? (
+        <div className="mb-5 flex justify-end">
           <button type="button" onClick={() => setAdding(true)} className="btn-quiet">
             Add drawing
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {adding ? (
         <AddDrawingForm
@@ -114,7 +112,7 @@ export function DrawingsTab({
         />
       ) : null}
 
-      <div className="mt-3">
+      <div>
         {sets === null ? (
           <div className="space-y-3" aria-hidden>
             {[0, 1].map((key) => (
@@ -123,7 +121,11 @@ export function DrawingsTab({
           </div>
         ) : list.length === 0 ? (
           !adding ? (
-            <EmptyState onAdd={() => setAdding(true)} />
+            <Empty
+              title="No drawings yet"
+              action="Add a drawing"
+              onAction={() => setAdding(true)}
+            />
           ) : null
         ) : (
           <div className="space-y-3">
@@ -141,52 +143,6 @@ export function DrawingsTab({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function NextStep({
-  children,
-  action,
-  onAction,
-  tone = "action",
-}: {
-  children: React.ReactNode;
-  action?: string;
-  onAction?: () => void;
-  tone?: "action" | "waiting";
-}) {
-  return (
-    <div
-      className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-3
-                  border bg-card px-5 py-4 ${
-                    tone === "waiting" ? "border-rule" : "border-brand"
-                  }`}
-    >
-      <p className="max-w-[62ch] text-[0.9375rem] leading-relaxed text-muted">
-        {children}
-      </p>
-      {action && onAction ? (
-        <button type="button" onClick={onAction} className="btn-primary shrink-0">
-          {action}
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function EmptyState({ onAdd }: { onAdd: () => void }) {
-  return (
-    <div className="border border-dashed border-rule bg-card px-6 py-14 text-center">
-      <p className="font-display text-title">Start with one drawing</p>
-      <p className="mx-auto mt-2.5 max-w-[46ch] text-[0.9375rem] leading-relaxed text-muted">
-        Name it the way you would on a sheet — “Ground Floor Plan”, “Front
-        Elevation”. Every file you upload to it afterwards becomes a numbered
-        revision, and the old ones never disappear.
-      </p>
-      <button type="button" onClick={onAdd} className="btn-primary mt-7">
-        Add your first drawing
-      </button>
     </div>
   );
 }
@@ -220,14 +176,11 @@ function AddDrawingForm({
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="mt-3 animate-rise border border-rule bg-card p-5"
-    >
-      <label htmlFor="new-drawing" className="eyebrow block">
-        Drawing name
-      </label>
-      <div className="mt-2 flex flex-wrap gap-2">
+    <div className="mb-3">
+      <FormCard onSubmit={submit}>
+        <label htmlFor="new-drawing" className="eyebrow block">
+          Drawing name
+        </label>
         <input
           id="new-drawing"
           type="text"
@@ -235,16 +188,17 @@ function AddDrawingForm({
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Ground Floor Plan"
           autoFocus
-          className="field flex-1 sm:max-w-sm"
+          className="field mt-2 sm:max-w-md"
         />
-        <button type="submit" disabled={busy || !title.trim()} className="btn-primary">
-          {busy ? "Adding…" : "Add"}
-        </button>
-        <button type="button" onClick={onCancel} className="btn-quiet">
-          Cancel
-        </button>
-      </div>
-    </form>
+        <FormActions
+          submitLabel="Add drawing"
+          busyLabel="Adding…"
+          busy={busy}
+          disabled={!title.trim()}
+          onCancel={onCancel}
+        />
+      </FormCard>
+    </div>
   );
 }
 
@@ -408,7 +362,7 @@ function UploadPanel({
   return (
     <form onSubmit={submit} className="px-5 py-5">
       <h4 className="eyebrow">
-        {isFirst ? "Upload the first drawing" : "Upload a new revision"}
+        {isFirst ? "Upload the drawing" : "Upload a new revision"}
       </h4>
 
       <div className="mt-3">
@@ -438,13 +392,13 @@ function UploadPanel({
         </p>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+      {/* The note about the client being emailed used to live beside this
+          button. It is true of every upload in the product and it was being
+          restated on every card, every time. */}
+      <div className="mt-4">
         <button type="submit" disabled={busy || !file} className="btn-primary">
           {busy ? "Uploading…" : isFirst ? "Upload drawing" : "Upload revision"}
         </button>
-        <p className="text-[0.8125rem] text-faint">
-          Your client is emailed as soon as it is up.
-        </p>
       </div>
     </form>
   );

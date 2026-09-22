@@ -1,0 +1,79 @@
+# Production stack for the droplet. The frontend is NOT here -- Vercel builds
+# and serves that from ./frontend, and proxies /api, /static and /django-admin
+# back to this machine.
+#
+# Run with:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differences from docker-compose.yml, which is a development file:
+#   - gunicorn instead of runserver, which is single-threaded and unsafe here
+#   - no source bind-mounts, so the running code is what was built
+#   - Postgres is not published to the host; only the backend can reach it
+#   - Caddy terminates TLS and gets its own certificates
+#   - restart policies, so the stack survives a reboot
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # No `ports:` on purpose. The dev file publishes 5432 for convenience;
+    # doing that here would put Postgres on the public internet.
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    # Two workers is the floor that lets one request wait on another -- the
+    # PDF render on upload is slow enough to block a single worker.
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application
+               --bind 0.0.0.0:8000
+               --workers 3
+               --timeout 120
+               --access-logfile -
+               --error-logfile -"
+    env_file: .env
+    environment:
+      DJANGO_DEBUG: "0"
+    volumes:
+      # Uploaded drawings are the one thing that must outlive the container.
+      - ./media:/app/media
+      - staticfiles:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      BACKEND_HOST: ${BACKEND_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  staticfiles:
+  caddy_data:
+  caddy_config:

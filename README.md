@@ -71,9 +71,97 @@ endpoint cannot either. Three tests hold that line, because a public form that
 can grant Django admin access is the one mistake here that would be
 catastrophic.
 
-Signed-in professionals edit their own practice name, phone and logo at
-`/profile`. That is a private settings page, not a profile in the directory
-sense — there is no discovery anywhere in this product, by design.
+Signed-in professionals edit their own details at `/profile`. Three panels,
+one of them folded shut, because this is a page somebody visits twice: once on
+their first day and once when they change their phone number.
+
+| Panel | Holds |
+|---|---|
+| **You** | photo, name, profession, about, phone, location, website, email |
+| **Your practice** | folded to a sentence saying what it is for; opens to practice name and logo |
+| **Your card** | cover image, the publish switch, the link |
+
+The fold is not decoration. "Your practice" as a bare heading above two fields
+is a thing people have to open to understand, so shut it says what it does —
+*your clients see "X" at the top of every page you share with them* — and a
+**Change** button opens it. It springs open on its own if a save comes back
+with an error inside it, because an error in a shut panel is an error nobody
+can read.
+
+The panels separate two things the first version of this screen ran together:
+
+| | What it is | Where it shows |
+|---|---|---|
+| **You** | name, profession, photo, a few lines about yourself | your card |
+| **Your practice** | practice name and logo | the top of every client page, and your card |
+| **Your card** | a cover image, the link, and whether it is published | your card |
+
+A one-person studio types the same words into both. A practice with three
+architects does not, and a client looking at a drawing needs a human name to
+put against it. `full_name` falls back to `practice_name` wherever a person is
+named, so an account that never fills it in behaves exactly as it did before.
+
+That page is still private settings. There is no directory and no discovery
+anywhere in this product.
+
+### The profile card
+
+`/c/<slug>` is the one page here that anyone may open — a digital business
+card: photo, name, profession, practice, phone, email, location, website, and
+a **Save to contacts** button that hands over a vCard. It exists because a
+link is a better business card than a business card: it cannot be lost, and it
+drops straight into the recipient's phone.
+
+It is **off until it is switched on**. Every account gets a slug at creation,
+derived from its name, but `card_is_public` defaults to `False` and stays
+there until the architect ticks the box. A card that is off, one whose account
+was suspended, and one that never existed all return the same 404.
+
+Nothing about any project is on it. `ProfileCardSerializer` names its fields
+explicitly, and a test asserts that no project name, client name or access
+token appears in the response.
+
+**The cover is not the logo.** `cover` is its own field, and the two are not
+interchangeable:
+
+| | `logo` | `cover` |
+|---|---|---|
+| What it is | a mark | a photograph |
+| Where | client-page header, a chip on the card's band | the band across the top of the card |
+| Drawn | `object-contain`, max 28px tall, on its own | `object-cover`, full bleed, cropped to 3:1 |
+| Limit | 2 MB, SVG allowed | 6 MB, no SVG |
+
+A logo has to survive being small, alone and often transparent; a cover gets
+cropped to a strip. Pointing one file at both jobs is how a wordmark comes out
+as a smear, which is exactly what happens if you upload a skyline as a logo.
+
+The card is laid out the way everyone already reads a profile:
+
+```
+┌──────────────────────────────────────┐
+│░░░░ cover band, 3:1 ░░░░░░░  ┌──────┐│  logo rides on the band, on its
+│░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │ logo ││  own paper chip -- straight over
+│░░░░░░┌────────┐░░░░░░░░░░░░░ └──────┘│  a photograph it is legible or
+├──────│portrait│──────────────────────┤  not depending on the photograph
+│      └────────┘                      │
+│  Name                                │
+│  Profession                          │
+│  Practice                            │
+│  About…                              │
+├──────────────────────────────────────┤
+│ PHONE · EMAIL · WEBSITE · LOCATION   │
+└──────────────────────────────────────┘
+```
+
+The band is **always drawn**, photograph or not — with no cover it is a flat
+brand-coloured band, so the layout never rearranges itself depending on which
+pictures happen to have been filled in. The portrait needs `position: relative`
+to sit on top of it; the band is positioned, so a static sibling paints
+underneath.
+
+Changing the slug breaks every card already handed out, so the page says so
+next to the box and the slug is never rewritten automatically when a name
+changes.
 
 ### Without Docker
 
@@ -129,6 +217,16 @@ backend/config/     Django settings, URLs, WSGI
 backend/portal/     the entire domain, one app
 frontend/src/app/p/[token]/   the client view -- the screen that sells this
 frontend/src/app/(architect)/ the architect's side
+frontend/src/app/c/[slug]/    the profile card -- the only public page
+```
+
+Three URL namespaces, and which one a request is on is meant to be obvious
+from its path alone:
+
+```
+/api/...             architect, session required
+/api/p/<token>/      client, the token is the whole credential
+/api/card/<slug>/    public, one architect's own card and nothing else
 ```
 
 **One Django app.** Eight models: `Architect`, `Project`, `DrawingSet`,
@@ -177,9 +275,32 @@ judge features.
   state and nothing else.
 - The drawings are the only things on screen with visual weight.
 - Animation is opacity and a 4px translate, under 200ms. Nothing bounces.
+- **One offer per screen.** A tab shows its "Add" button *or* an empty state
+  with one button in it, never both; the project header hides "Share with
+  client" while you are on the Share tab. Every place the product offered the
+  same action twice, it was because two people added a button to the same
+  screen a month apart.
+- **A tab is its own heading.** The Materials tab does not also print
+  "Materials" and a sentence explaining what materials are. Copy written for
+  somebody's first visit is still on screen at their four hundredth.
+- **Forms share one bed.** `components/architect/Form.tsx` holds the twelve
+  column grid, the labelled field, the money input and the actions row. Three
+  add-forms grew up separately and drifted to two, three and one column
+  layouts with three different paddings; nothing is laid out by hand any more.
+- **A disabled primary is an outline, not a ghost.** At 40% opacity a filled
+  button is a grey slab that reads as broken rather than as not-yet.
 - The architect's practice name sits at the top of every client screen, and
   the browser tab says the project name. Our name appears nowhere the client
-  can see it.
+  can see it — including on the profile card.
+- The card is one component, rendered twice: the live preview on `/profile`
+  and the public page at `/c/<slug>`. A preview that could drift from what was
+  published would be worse than no preview.
+- `html, body { overflow-x: clip }` in `globals.css`, **not** `hidden`.
+  Both stop the client's phone scrolling sideways, but `hidden` makes the
+  element a scroll container, and a scroll container is what `position: sticky`
+  sticks inside — so with `hidden` every sticky panel on the site silently
+  stops sticking. If sideways scroll ever reappears, fix the element that
+  overflows; do not change this back.
 
 ## Non-goals
 
@@ -196,15 +317,85 @@ If one of these starts to feel necessary, the scope has drifted.
 
 ## Deployment
 
-One small VPS is plenty (Hetzner CX22 or similar, roughly €5–10/month).
+Frontend on Vercel, backend and database on one small droplet. **One git
+repository, not two** — `docker-compose.yml` builds both folders and both read
+the same root `.env`, so splitting them breaks local development for no gain.
+Each platform is pointed at the subdirectory it needs.
 
-- Caddy in front for automatic TLS.
-- Gunicorn instead of `runserver`, `DJANGO_DEBUG=0`, a real `SECRET_KEY`.
+The browser only ever talks to the Vercel domain. Next rewrites `/api`,
+`/static` and `/django-admin` through to the droplet, which is what keeps the
+session cookie same-origin — see *The one constraint that shapes everything*.
+Drawings are streamed under `/api`, so they ride the same proxy and need no
+separate rewrite or public bucket.
+
+### Droplet
+
+`docker-compose.prod.yml` is the production stack: Postgres, gunicorn, and
+Caddy for automatic TLS. It is not the dev file with flags changed — it drops
+the source bind-mounts, stops publishing Postgres to the host, and restarts on
+reboot.
+
+```bash
+git clone https://github.com/<you>/drafo.git && cd drafo
+cp .env.example .env          # then edit it, see the table below
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml exec backend   python manage.py createsuperuser
+```
+
+`migrate` and `collectstatic` run on every start, so a deploy is
+`git pull && docker compose -f docker-compose.prod.yml up -d --build`.
+
+Point `BACKEND_HOST`'s DNS A record at the droplet **before** first start, or
+Caddy's certificate request fails and it will back off before retrying.
+
+### Vercel
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `frontend` |
+| Framework | Next.js (detected) |
+| `API_PROXY_TARGET` | `https://<BACKEND_HOST>` |
+
+Set an Ignored Build Step so backend-only commits do not rebuild the frontend:
+
+```bash
+git diff --quiet HEAD^ HEAD -- .
+```
+
+Vercel ignores `frontend/Dockerfile`; that file is only for local compose, and
+it runs `npm run dev`, which is not a production server.
+
+### The `.env` on the droplet
+
+Everything below is wrong by default and will fail in a way that is obvious
+only in production.
+
+| Variable | Why it matters |
+| --- | --- |
+| `DJANGO_DEBUG=0` | Defaults to `1`. Secure cookies, HSTS and the proxy TLS header all live behind `if not DEBUG`. |
+| `DJANGO_SECRET_KEY` | Sessions and signed tokens depend on it. Generate a fresh one. |
+| `DJANGO_ALLOWED_HOSTS` | Must contain `BACKEND_HOST`, or every request 400s. |
+| `CSRF_TRUSTED_ORIGINS` | Must contain the **Vercel** origin, not the droplet's. Miss this and sign-in fails CSRF while GETs look fine. |
+| `PUBLIC_BASE_URL` | The Vercel origin. Client links are built from it, so if it is wrong every WhatsApp link points at localhost. |
+| `BACKEND_HOST` | Bare hostname, no scheme. Caddy requests the certificate for it. |
+| `POSTGRES_PASSWORD` | Not `changeme`. |
+
+### Before you call it live
+
+- [ ] `https://<BACKEND_HOST>/django-admin/` loads **with styling**. Unstyled
+      means `collectstatic` or WhiteNoise is not working.
+- [ ] Sign in on the Vercel domain. This is the CSRF and cookie path in one.
+- [ ] Upload a PDF, open the client link in a private window, tap Approve.
+- [ ] `docker compose -f docker-compose.prod.yml ps` shows `db` healthy and no
+      published port on it.
+
+### Still outstanding
+
 - Swap `STORAGES` to Cloudflare R2 — S3-compatible, no egress fees, which
-  matters because clients open the same drawings repeatedly.
+  matters because clients open the same drawings repeatedly. Until then
+  `./media` on the droplet is the only copy of every drawing.
 - `pg_dump` to object storage nightly. These drawings are someone's house;
   losing them is not recoverable.
-- Remove the `ports:` mapping from the `db` service.
 
 ## Definition of done
 

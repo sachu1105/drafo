@@ -16,7 +16,7 @@ from pathlib import PurePosixPath
 
 from django.contrib.auth import authenticate, login, logout
 from django.db.models import Prefetch
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -53,6 +53,7 @@ from .serializers import (
     LoginSerializer,
     MaterialSerializer,
     MilestoneSerializer,
+    ProfileCardSerializer,
     ProfileUpdateSerializer,
     ProjectSerializer,
     RegistrationSerializer,
@@ -379,6 +380,151 @@ class PracticeLogoView(APIView):
         if request.user.pk != architect_id or not request.user.logo:
             raise Http404
         return stream(request.user.logo, download_name=stored_name(request.user.logo))
+
+
+class PracticeAvatarView(APIView):
+    """The architect's own photo, for their own screens.
+
+    The public card serves the same file from its own URL. Two doors to one
+    picture, because only one of them should keep working if the card is
+    switched off.
+    """
+
+    def get(self, request, architect_id):
+        if request.user.pk != architect_id or not request.user.avatar:
+            raise Http404
+        return stream(
+            request.user.avatar, download_name=stored_name(request.user.avatar)
+        )
+
+
+class PracticeCoverView(APIView):
+    """The card's cover band, for the preview on the architect's own screen."""
+
+    def get(self, request, architect_id):
+        if request.user.pk != architect_id or not request.user.cover:
+            raise Http404
+        return stream(
+            request.user.cover, download_name=stored_name(request.user.cover)
+        )
+
+
+# ==========================================================================
+# the profile card -- the one page in this product anyone may open
+# ==========================================================================
+
+
+def vcard_escape(value: str) -> str:
+    """Escape a value for a vCard line (RFC 6350 3.4)."""
+    return (
+        value.replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
+    )
+
+
+class CardBaseView(APIView):
+    """No session, no token: the slug is the address and nothing more.
+
+    A card only resolves while its owner has it switched on, and an inactive
+    or suspended account has no card at all.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def architect(self):
+        return get_object_or_404(
+            Architect,
+            card_slug=self.kwargs["slug"],
+            card_is_public=True,
+            is_active=True,
+        )
+
+
+class CardView(CardBaseView):
+    def get(self, request, slug):
+        return Response(ProfileCardSerializer(self.architect()).data)
+
+
+class CardAvatarView(CardBaseView):
+    def get(self, request, slug):
+        architect = self.architect()
+        if not architect.avatar:
+            raise Http404
+        response = stream(
+            architect.avatar, download_name=stored_name(architect.avatar)
+        )
+        # Unlike every other file in this product, this one is deliberately
+        # public, so it may sit in a shared cache.
+        response["Cache-Control"] = "public, max-age=3600"
+        return response
+
+
+class CardLogoView(CardBaseView):
+    def get(self, request, slug):
+        architect = self.architect()
+        if not architect.logo:
+            raise Http404
+        response = stream(architect.logo, download_name=stored_name(architect.logo))
+        response["Cache-Control"] = "public, max-age=3600"
+        return response
+
+
+class CardCoverView(CardBaseView):
+    def get(self, request, slug):
+        architect = self.architect()
+        if not architect.cover:
+            raise Http404
+        response = stream(architect.cover, download_name=stored_name(architect.cover))
+        response["Cache-Control"] = "public, max-age=3600"
+        return response
+
+
+class CardVCardView(CardBaseView):
+    """Save to contacts.
+
+    A paper card gets typed into a phone or lost. This is the whole reason to
+    have a link rather than a picture of a card.
+    """
+
+    def get(self, request, slug):
+        architect = self.architect()
+        name = architect.display_name
+
+        lines = ["BEGIN:VCARD", "VERSION:3.0", f"FN:{vcard_escape(name)}"]
+        # N wants family;given, and we only ever asked for one name field.
+        parts = name.split()
+        if len(parts) > 1:
+            lines.append(
+                f"N:{vcard_escape(parts[-1])};{vcard_escape(' '.join(parts[:-1]))};;;"
+            )
+        else:
+            lines.append(f"N:{vcard_escape(name)};;;;")
+        if architect.practice_name:
+            lines.append(f"ORG:{vcard_escape(architect.practice_name)}")
+        if architect.profession:
+            lines.append(f"TITLE:{vcard_escape(architect.profession)}")
+        if architect.phone:
+            lines.append(f"TEL;TYPE=CELL:{vcard_escape(architect.phone)}")
+        lines.append(f"EMAIL;TYPE=WORK:{vcard_escape(architect.email)}")
+        if architect.location:
+            lines.append(f"ADR;TYPE=WORK:;;{vcard_escape(architect.location)};;;;")
+        if architect.website:
+            lines.append(f"URL:{vcard_escape(architect.website)}")
+        if architect.card_url:
+            lines.append(f"URL:{vcard_escape(architect.card_url)}")
+        if architect.bio:
+            lines.append(f"NOTE:{vcard_escape(architect.bio)}")
+        lines.append("END:VCARD")
+
+        body = "\r\n".join(lines) + "\r\n"
+        response = HttpResponse(body, content_type="text/vcard; charset=utf-8")
+        response["Content-Disposition"] = (
+            f'attachment; filename="{architect.card_slug}.vcf"'
+        )
+        return response
 
 
 # ==========================================================================

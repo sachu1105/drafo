@@ -111,9 +111,52 @@ export type Project = {
 export type Architect = {
   id: number;
   email: string;
+
+  // --- the person ---
+  full_name: string;
+  profession: string;
+  bio: string;
+  avatar_url: string | null;
+  /** full_name, or the practice name when they have not given one. */
+  display_name: string;
+
+  // --- the practice: the letterhead the client sees ---
   practice_name: string;
-  phone: string;
   logo_url: string | null;
+
+  // --- contact ---
+  phone: string;
+  location: string;
+  website: string;
+
+  // --- the shareable card ---
+  /** The band across the top of the card. Not the logo. */
+  cover_url: string | null;
+  card_slug: string;
+  card_url: string | null;
+  card_is_public: boolean;
+
   /** Only superusers see the admin link; a self-registered account never does. */
   is_staff: boolean;
+};
+
+/**
+ * The card as anyone holding the link reads it.
+ *
+ * A narrower shape than Architect on purpose: no id, no card_is_public, and
+ * nothing that would let the page be edited from the outside.
+ */
+export type ProfileCard = {
+  name: string;
+  profession: string;
+  practice_name: string;
+  bio: string;
+  phone: string;
+  email: string;
+  location: string;
+  website: string;
+  avatar_url: string | null;
+  logo_url: string | null;
+  cover_url: string | null;
+  card_slug: string;
 };

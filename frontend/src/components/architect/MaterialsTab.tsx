@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { FileField } from "@/components/architect/FileField";
+import {
+  Empty,
+  FormActions,
+  FormCard,
+  FormGrid,
+  Labelled,
+  MoneyInput,
+} from "@/components/architect/Form";
 import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import type { Material, MaterialCategory } from "@/lib/types";
@@ -65,19 +73,17 @@ export function MaterialsTab({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-display text-title">Materials</h2>
-          <p className="mt-1 text-[0.8125rem] text-muted">
-            Every selection in one place, visible to your client.
-          </p>
-        </div>
-        {!adding ? (
+      {/* No heading and no blurb: the tab that was clicked to get here is
+          called Materials, and the button is only offered when there is
+          already a list to add to -- an empty tab makes the offer once, in
+          the middle of the screen, not twice. */}
+      {!adding && (materials?.length ?? 0) > 0 ? (
+        <div className="mb-5 flex justify-end">
           <button type="button" onClick={() => setAdding(true)} className="btn-quiet">
             Add material
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {adding ? (
         <AddMaterialForm
@@ -90,25 +96,16 @@ export function MaterialsTab({
         />
       ) : null}
 
-      <div className="mt-6">
+      <div className={adding ? "mt-6" : ""}>
         {materials === null ? (
           <p className="text-[0.875rem] text-faint">Loading…</p>
         ) : materials.length === 0 ? (
           !adding ? (
-            <div className="border border-dashed border-rule bg-card px-6 py-12 text-center">
-              <p className="font-display text-[1.25rem]">Nothing recorded yet</p>
-              <p className="mx-auto mt-2 max-w-[46ch] text-[0.9375rem] leading-relaxed text-muted">
-                Tile, sanitary, switches, paint. This is where a year of
-                decisions stops living in the chat thread.
-              </p>
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                className="btn-primary mt-6"
-              >
-                Add the first material
-              </button>
-            </div>
+            <Empty
+              title="Nothing recorded yet"
+              action="Add a material"
+              onAction={() => setAdding(true)}
+            />
           ) : null
         ) : (
           <div className="space-y-8">
@@ -168,7 +165,8 @@ export function MaterialsTab({
                       <button
                         type="button"
                         onClick={() => remove(material)}
-                        className="shrink-0 self-center text-[0.8125rem] text-faint hover:text-ink"
+                        className="shrink-0 self-start text-[0.8125rem] text-faint
+                                   hover:text-ink"
                       >
                         Remove
                       </button>
@@ -224,19 +222,15 @@ function AddMaterialForm({
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="mt-5 animate-rise space-y-5 border border-rule bg-card p-5 sm:p-6"
-    >
-      <div className="grid gap-4 sm:grid-cols-[11rem_1fr]">
-        <label className="block">
-          <span className="eyebrow block">Category</span>
+    <FormCard onSubmit={submit}>
+      <FormGrid>
+        <Labelled label="Category" span={4}>
           <select
             value={form.category}
             onChange={(event) =>
               setForm({ ...form, category: event.target.value as MaterialCategory })
             }
-            className="field mt-2"
+            className="select"
           >
             {CATEGORIES.map((category) => (
               <option key={category.value} value={category.value}>
@@ -244,89 +238,74 @@ function AddMaterialForm({
               </option>
             ))}
           </select>
-        </label>
+        </Labelled>
 
-        <label className="block">
-          <span className="eyebrow block">Item</span>
+        <Labelled label="Item" span={8}>
           <input
             type="text"
             value={form.name}
             onChange={(event) => setForm({ ...form, name: event.target.value })}
             placeholder="600×600 vitrified tile, matt ivory"
             autoFocus
-            className="field mt-2"
+            className="field"
           />
-        </label>
-      </div>
+        </Labelled>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <label className="block">
-          <span className="eyebrow block">Brand</span>
+        <Labelled label="Brand" span={4}>
           <input
             type="text"
             value={form.brand}
             onChange={(event) => setForm({ ...form, brand: event.target.value })}
-            className="field mt-2"
+            placeholder="Optional"
+            className="field"
           />
-        </label>
-        <label className="block">
-          <span className="eyebrow block">Price</span>
-          <input
-            type="number"
-            step="0.01"
+        </Labelled>
+
+        <Labelled label="Price" span={4}>
+          <MoneyInput
             value={form.price}
-            onChange={(event) => setForm({ ...form, price: event.target.value })}
-            className="field mt-2"
+            onChange={(price) => setForm({ ...form, price })}
           />
-        </label>
-        <label className="block">
-          <span className="eyebrow block">Unit</span>
+        </Labelled>
+
+        <Labelled label="Unit" span={4}>
           <input
             type="text"
             value={form.unit}
             onChange={(event) => setForm({ ...form, unit: event.target.value })}
             placeholder="per sq ft"
-            className="field mt-2"
+            className="field"
           />
-        </label>
-      </div>
+        </Labelled>
 
-      <label className="block">
-        <span className="eyebrow block">Note</span>
-        <input
-          type="text"
-          value={form.notes}
-          onChange={(event) => setForm({ ...form, notes: event.target.value })}
-          placeholder="Living and dining only"
-          className="field mt-2"
-        />
-      </label>
+        <Labelled label="Note" span={12}>
+          <input
+            type="text"
+            value={form.notes}
+            onChange={(event) => setForm({ ...form, notes: event.target.value })}
+            placeholder="Living and dining only"
+            className="field"
+          />
+        </Labelled>
 
-      <div>
-        <span className="eyebrow block">Photo</span>
-        <div className="mt-2">
+        <Labelled label="Photo" span={12}>
           <FileField
             file={photo}
             onFile={setPhoto}
             accept="image/png,image/jpeg"
-            hint="PNG or JPG — optional"
+            hint="PNG or JPG, optional"
             disabled={busy}
           />
-        </div>
-      </div>
+        </Labelled>
+      </FormGrid>
 
-      <div className="flex flex-wrap gap-2 border-t border-ruleSoft pt-4">
-        <button
-          type="submit"
-          disabled={busy || !form.name.trim()}
-          className="btn-primary"
-        >
-          {busy ? "Saving…" : "Add material"}
-        </button>
-        <button type="button" onClick={onCancel} className="btn-quiet">
-          Cancel
-        </button>
-      </div>
-    </form>
+      <FormActions
+        submitLabel="Add material"
+        busyLabel="Saving…"
+        busy={busy}
+        disabled={!form.name.trim()}
+        onCancel={onCancel}
+      />
+    </FormCard>
   );
 }

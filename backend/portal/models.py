@@ -14,10 +14,37 @@ import secrets
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.utils.text import slugify
 
 from .storage import media_storage
 
 TOKEN_BYTES = 32  # secrets.token_urlsafe(32) -> 43 URL-safe characters
+
+# A card slug becomes a top-level path, /c/<slug>, so it must never be able to
+# collide with a route the frontend already owns.
+RESERVED_SLUGS = frozenset(
+    {
+        "admin",
+        "api",
+        "c",
+        "card",
+        "django-admin",
+        "login",
+        "logout",
+        "me",
+        "new",
+        "p",
+        "privacy",
+        "profile",
+        "projects",
+        "register",
+        "settings",
+        "static",
+        "support",
+        "terms",
+        "_next",
+    }
+)
 
 
 class ArchitectManager(BaseUserManager):
@@ -52,11 +79,43 @@ class Architect(AbstractUser):
     last_name = None
 
     email = models.EmailField("email address", unique=True)
+
+    # --- the practice: the letterhead above every page a client opens ---
     practice_name = models.CharField(max_length=120)
-    phone = models.CharField(max_length=20, blank=True)
     logo = models.ImageField(
         upload_to="logos/", storage=media_storage, null=True, blank=True
     )
+
+    # --- the person: who the client is actually dealing with ---
+    # Separate from practice_name on purpose. A one-person studio types the
+    # same words into both, but a practice with three architects does not, and
+    # the client needs a human name to put against a drawing.
+    full_name = models.CharField(max_length=120, blank=True)
+    profession = models.CharField(max_length=120, blank=True)
+    bio = models.TextField(max_length=600, blank=True)
+    avatar = models.ImageField(
+        upload_to="avatars/", storage=media_storage, null=True, blank=True
+    )
+    # The band across the top of the card. Deliberately not the logo: a logo
+    # is a mark that has to stay legible small and on its own, a cover is a
+    # photograph that gets cropped to a strip. Asking one file to be both is
+    # what makes a wordmark come out as a smear.
+    cover = models.ImageField(
+        upload_to="covers/", storage=media_storage, null=True, blank=True
+    )
+
+    # --- contact ---
+    phone = models.CharField(max_length=20, blank=True)
+    location = models.CharField(max_length=120, blank=True)
+    website = models.URLField(max_length=200, blank=True)
+
+    # --- the shareable card ---
+    # Off until asked for. Everything else in this product is reachable only
+    # by an unguessable token, so a page anyone can open is an explicit,
+    # deliberate act, never a default.
+    card_slug = models.SlugField(max_length=40, unique=True, null=True, blank=True)
+    card_is_public = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = "email"
@@ -71,6 +130,49 @@ class Architect(AbstractUser):
 
     def __str__(self) -> str:
         return self.practice_name or self.email
+
+    @property
+    def display_name(self) -> str:
+        """The human to put against a drawing, falling back to the practice."""
+        return self.full_name or self.practice_name
+
+    @property
+    def card_url(self) -> str | None:
+        if not self.card_slug:
+            return None
+        return f"{settings.PUBLIC_BASE_URL}/c/{self.card_slug}"
+
+    def assign_card_slug(self) -> str:
+        """Give this account a card slug, derived from whatever name it has.
+
+        Only ever called when there is none: the slug is a published URL the
+        moment the card goes public, and silently rewriting it as the name
+        changes would break every card already handed out.
+        """
+        base = slugify(self.full_name or self.practice_name)[:32].strip("-")
+        if not base or base in RESERVED_SLUGS:
+            base = f"{base or 'studio'}-studio"[:32].strip("-")
+
+        candidate = base
+        suffix = 2
+        model = type(self)
+        while (
+            candidate in RESERVED_SLUGS
+            or model.objects.filter(card_slug=candidate).exclude(pk=self.pk).exists()
+        ):
+            tail = f"-{suffix}"
+            candidate = f"{base[: 32 - len(tail)]}{tail}"
+            suffix += 1
+        self.card_slug = candidate
+        return candidate
+
+    def save(self, *args, **kwargs):
+        if not self.card_slug:
+            self.assign_card_slug()
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = list(update_fields) + ["card_slug"]
+        super().save(*args, **kwargs)
 
 
 class Project(models.Model):

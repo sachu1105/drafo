@@ -1,0 +1,18 @@
+# Keep the build context to source. Without this, `COPY . .` bakes the local
+# SQLite database and any locally uploaded drawings into the production image.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local development database. Production uses Postgres; shipping this would
+# put a stale copy of real data inside the image.
+*.sqlite3
+
+# Uploaded drawings live on a mounted volume, never in the image.
+media/
+staticfiles/
+
+.pytest_cache/
+.mypy_cache/

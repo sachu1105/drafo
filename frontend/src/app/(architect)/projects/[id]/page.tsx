@@ -133,13 +133,18 @@ export default function ProjectPage({
               {project.awaiting_approval_count} awaiting approval
             </span>
           ) : null}
-          <button
-            type="button"
-            onClick={() => setTab("Share")}
-            className="btn-quiet px-4 py-2"
-          >
-            Share with client
-          </button>
+          {/* A shortcut to the Share tab. Offered everywhere except on the
+              Share tab, where it is a button that goes where you already
+              are. */}
+          {tab !== "Share" ? (
+            <button
+              type="button"
+              onClick={() => setTab("Share")}
+              className="btn-quiet px-4 py-2"
+            >
+              Share with client
+            </button>
+          ) : null}
         </div>
       </header>
 

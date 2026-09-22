@@ -60,6 +60,18 @@ def pdf_bytes() -> bytes:
     return out.getvalue()
 
 
+def png_of_size(total: int) -> bytes:
+    """A genuine PNG padded to exactly `total` bytes.
+
+    Django's ImageField opens and verifies the upload before any validation of
+    ours runs, so a size test needs a real image. Bytes after IEND are ignored
+    by the decoder, which lets the size be set to the byte.
+    """
+    base = png_bytes(8, 8)
+    assert len(base) < total, "padding only grows a file"
+    return base + b"\x00" * (total - len(base))
+
+
 PNG = png_bytes()
 PDF = pdf_bytes()
 
@@ -480,6 +492,20 @@ class RegistrationTests(MediaSandbox):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_a_name_can_be_given_at_registration(self):
+        """The person, not only the studio -- and the slug follows the person."""
+        response = self.client.post(
+            self.URL,
+            data=self.payload(full_name="Anna Mathew"),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        created = Architect.objects.get(email="new@studio.example")
+        self.assertEqual(created.full_name, "Anna Mathew")
+        self.assertEqual(created.display_name, "Anna Mathew")
+        self.assertEqual(created.card_slug, "anna-mathew")
+        self.assertFalse(created.card_is_public)
+
     def test_weak_password_is_rejected(self):
         response = self.client.post(
             self.URL,
@@ -494,6 +520,29 @@ class ProfileTests(MediaSandbox):
     def setUp(self):
         self.architect = make_architect("a@example.com", "Studio A")
         self.client.force_login(self.architect)
+
+    def test_the_person_and_the_practice_are_stored_apart(self):
+        response = self.client.patch(
+            "/api/auth/me/",
+            data={
+                "full_name": "Anna Mathew",
+                "profession": "Principal Architect",
+                "practice_name": "Studio A",
+                "location": "Kochi",
+                "website": "https://studio-a.example",
+                "bio": "Small houses.",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.architect.refresh_from_db()
+        self.assertEqual(self.architect.full_name, "Anna Mathew")
+        self.assertEqual(self.architect.practice_name, "Studio A")
+        self.assertEqual(self.architect.display_name, "Anna Mathew")
+        self.assertEqual(response.json()["display_name"], "Anna Mathew")
+
+    def test_display_name_falls_back_to_the_practice(self):
+        self.assertEqual(self.architect.display_name, "Studio A")
 
     def test_can_update_practice_details(self):
         response = self.client.patch(
@@ -555,6 +604,379 @@ class ProfileTests(MediaSandbox):
                 content_type="application/json",
             ).status_code,
             (401, 403),
+        )
+
+
+class ProfileCardTests(MediaSandbox):
+    """The card is the only page here with no token in its URL.
+
+    So the tests that matter are about the switch: a card that was never
+    published, or belongs to a suspended account, must be indistinguishable
+    from one that never existed.
+    """
+
+    def setUp(self):
+        self.architect = make_architect("a@example.com", "Studio A")
+        self.client.force_login(self.architect)
+
+    def publish(self, **extra):
+        payload = {"card_is_public": True, "full_name": "Anna Mathew"}
+        payload.update(extra)
+        response = self.client.patch(
+            "/api/auth/me/", data=payload, content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.architect.refresh_from_db()
+        return response.json()
+
+    def test_a_slug_is_assigned_on_creation(self):
+        self.assertEqual(self.architect.card_slug, "studio-a")
+
+    def test_slugs_do_not_collide(self):
+        other = make_architect("b@example.com", "Studio A")
+        self.assertNotEqual(other.card_slug, self.architect.card_slug)
+        self.assertEqual(other.card_slug, "studio-a-2")
+
+    def test_a_card_is_private_until_it_is_published(self):
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(f"/api/card/{self.architect.card_slug}/").status_code, 404
+        )
+
+    def test_a_published_card_is_readable_by_anyone(self):
+        self.publish(profession="Principal Architect", location="Kochi")
+        self.client.logout()
+
+        response = self.client.get(f"/api/card/{self.architect.card_slug}/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["name"], "Anna Mathew")
+        self.assertEqual(body["profession"], "Principal Architect")
+        self.assertEqual(body["practice_name"], "Studio A")
+        self.assertEqual(body["location"], "Kochi")
+
+    def test_a_card_carries_nothing_about_any_project(self):
+        project = Project.objects.create(
+            architect=self.architect, name="Villa", client_name="Mr K"
+        )
+        self.publish()
+        self.client.logout()
+
+        body = self.client.get(f"/api/card/{self.architect.card_slug}/").content
+        self.assertNotIn(b"Villa", body)
+        self.assertNotIn(b"Mr K", body)
+        self.assertNotIn(project.access_token.encode(), body)
+
+    def test_a_suspended_account_has_no_card(self):
+        self.publish()
+        self.architect.is_active = False
+        self.architect.save(update_fields=["is_active"])
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(f"/api/card/{self.architect.card_slug}/").status_code, 404
+        )
+
+    def test_unpublishing_takes_the_card_down(self):
+        self.publish()
+        self.client.patch(
+            "/api/auth/me/",
+            data={"card_is_public": False},
+            content_type="application/json",
+        )
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(f"/api/card/{self.architect.card_slug}/").status_code, 404
+        )
+
+    def test_the_name_falls_back_to_the_practice(self):
+        self.client.patch(
+            "/api/auth/me/",
+            data={"card_is_public": True},
+            content_type="application/json",
+        )
+        self.client.logout()
+        body = self.client.get(f"/api/card/{self.architect.card_slug}/").json()
+        self.assertEqual(body["name"], "Studio A")
+
+    # --- choosing the link -------------------------------------------------
+
+    def test_a_slug_can_be_changed(self):
+        body = self.publish(card_slug="anna-mathew")
+        self.assertEqual(body["card_slug"], "anna-mathew")
+        self.assertTrue(body["card_url"].endswith("/c/anna-mathew"))
+        self.client.logout()
+        self.assertEqual(self.client.get("/api/card/anna-mathew/").status_code, 200)
+
+    def test_a_reserved_slug_is_refused(self):
+        response = self.client.patch(
+            "/api/auth/me/",
+            data={"card_slug": "projects"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_taken_slug_is_refused(self):
+        make_architect("b@example.com", "Studio B")
+        response = self.client.patch(
+            "/api/auth/me/",
+            data={"card_slug": "studio-b"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_malformed_slug_is_refused(self):
+        for bad in ("Studio A", "studio_a", "studio a", "ab", "-studio", "studio--a"):
+            with self.subTest(slug=bad):
+                response = self.client.patch(
+                    "/api/auth/me/",
+                    data={"card_slug": bad},
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 400, bad)
+
+    # --- pictures ----------------------------------------------------------
+
+    def test_avatar_upload_and_removal(self):
+        response = self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(
+                BOUNDARY,
+                {
+                    "avatar": SimpleUploadedFile(
+                        "me.png", PNG, content_type="image/png"
+                    )
+                },
+            ),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        avatar_url = response.json()["avatar_url"]
+        self.assertIn(f"/api/practice/{self.architect.pk}/avatar/", avatar_url)
+        self.assertEqual(self.client.get(avatar_url).status_code, 200)
+
+        cleared = self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(BOUNDARY, {"remove_avatar": "true"}),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.assertEqual(cleared.status_code, 200, cleared.content)
+        self.assertIsNone(cleared.json()["avatar_url"])
+
+    def test_a_file_a_hair_over_the_limit_says_so_in_kilobytes(self):
+        """"That logo is 2.0 MB. The limit is 2 MB." reads as a broken check."""
+        just_over = png_of_size(2 * 1024 * 1024 + 1024)  # 1 KB over
+        response = self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(
+                BOUNDARY,
+                {
+                    "logo": SimpleUploadedFile(
+                        "big.png", just_over, content_type="image/png"
+                    )
+                },
+            ),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.assertEqual(response.status_code, 400)
+        message = response.json()["logo"][0]
+        self.assertIn("just over the 2 MB limit, by 1 KB", message)
+        self.assertNotIn("is 2.0 MB", message)
+
+    def test_a_clearly_oversized_file_says_so_in_megabytes(self):
+        much_bigger = png_of_size(5 * 1024 * 1024)
+        response = self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(
+                BOUNDARY,
+                {
+                    "logo": SimpleUploadedFile(
+                        "huge.png", much_bigger, content_type="image/png"
+                    )
+                },
+            ),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("5.0 MB", response.json()["logo"][0])
+
+    def test_an_svg_is_refused_as_an_avatar(self):
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>'
+        response = self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(
+                BOUNDARY,
+                {
+                    "avatar": SimpleUploadedFile(
+                        "me.svg", svg, content_type="image/svg+xml"
+                    )
+                },
+            ),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_card_serves_its_own_pictures(self):
+        self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(
+                BOUNDARY,
+                {
+                    "avatar": SimpleUploadedFile(
+                        "me.png", PNG, content_type="image/png"
+                    ),
+                    "logo": SimpleUploadedFile(
+                        "mark.png", PNG, content_type="image/png"
+                    ),
+                },
+            ),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.publish()
+        self.client.logout()
+
+        body = self.client.get(f"/api/card/{self.architect.card_slug}/").json()
+        for url in (body["avatar_url"], body["logo_url"]):
+            served = self.client.get(url)
+            self.assertEqual(served.status_code, 200)
+            self.assertEqual(served["Content-Type"], "image/png")
+
+    def test_the_architects_own_avatar_url_is_not_public(self):
+        self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(
+                BOUNDARY,
+                {
+                    "avatar": SimpleUploadedFile(
+                        "me.png", PNG, content_type="image/png"
+                    )
+                },
+            ),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.publish()
+        self.client.logout()
+        self.assertIn(
+            self.client.get(f"/api/practice/{self.architect.pk}/avatar/").status_code,
+            (401, 403),
+        )
+
+    # --- the cover band ----------------------------------------------------
+
+    def upload_cover(self, name="dubai.png", blob=None):
+        return self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(
+                BOUNDARY,
+                {
+                    "cover": SimpleUploadedFile(
+                        name, blob if blob is not None else PNG, content_type="image/png"
+                    )
+                },
+            ),
+            content_type=MULTIPART_CONTENT,
+        )
+
+    def test_cover_upload_and_removal(self):
+        response = self.upload_cover()
+        self.assertEqual(response.status_code, 200, response.content)
+        cover_url = response.json()["cover_url"]
+        self.assertIn(f"/api/practice/{self.architect.pk}/cover/", cover_url)
+        self.assertEqual(self.client.get(cover_url).status_code, 200)
+
+        cleared = self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(BOUNDARY, {"remove_cover": "true"}),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.assertEqual(cleared.status_code, 200, cleared.content)
+        self.assertIsNone(cleared.json()["cover_url"])
+
+    def test_the_cover_is_not_the_logo(self):
+        """Two files, two fields. Setting one must never disturb the other."""
+        self.client.patch(
+            "/api/auth/me/",
+            data=encode_multipart(
+                BOUNDARY,
+                {"logo": SimpleUploadedFile("mark.png", PNG, content_type="image/png")},
+            ),
+            content_type=MULTIPART_CONTENT,
+        )
+        body = self.upload_cover().json()
+        self.assertIsNotNone(body["logo_url"])
+        self.assertIsNotNone(body["cover_url"])
+        self.assertNotEqual(body["logo_url"], body["cover_url"])
+
+        self.architect.refresh_from_db()
+        self.assertNotEqual(self.architect.logo.name, self.architect.cover.name)
+
+    def test_a_published_card_serves_its_cover(self):
+        self.upload_cover()
+        self.publish()
+        self.client.logout()
+
+        body = self.client.get(f"/api/card/{self.architect.card_slug}/").json()
+        self.assertIn(f"/api/card/{self.architect.card_slug}/cover/", body["cover_url"])
+        served = self.client.get(body["cover_url"])
+        self.assertEqual(served.status_code, 200)
+        self.assertEqual(served["Content-Type"], "image/png")
+
+    def test_a_cover_is_private_until_the_card_is_published(self):
+        self.upload_cover()
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(
+                f"/api/card/{self.architect.card_slug}/cover/"
+            ).status_code,
+            404,
+        )
+        self.assertIn(
+            self.client.get(f"/api/practice/{self.architect.pk}/cover/").status_code,
+            (401, 403),
+        )
+
+    def test_an_svg_is_refused_as_a_cover(self):
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>'
+        response = self.upload_cover(name="skyline.svg", blob=svg)
+        self.assertEqual(response.status_code, 400)
+
+    # --- save to contacts --------------------------------------------------
+
+    def test_vcard_carries_the_details(self):
+        self.publish(
+            profession="Principal Architect",
+            phone="+91 70267 00024",
+            location="Kochi, Kerala",
+        )
+        self.client.logout()
+
+        response = self.client.get(f"/api/card/{self.architect.card_slug}/vcard/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("text/vcard"))
+        body = response.content.decode()
+        self.assertIn("FN:Anna Mathew", body)
+        self.assertIn("N:Mathew;Anna;;;", body)
+        self.assertIn("ORG:Studio A", body)
+        self.assertIn("TITLE:Principal Architect", body)
+        self.assertIn("TEL;TYPE=CELL:+91 70267 00024", body)
+        self.assertIn("EMAIL;TYPE=WORK:a@example.com", body)
+        self.assertIn("\r\n", body)
+
+    def test_vcard_escapes_separators(self):
+        self.publish(location="Kochi, Kerala", bio="Houses; not towers")
+        self.client.logout()
+        body = self.client.get(
+            f"/api/card/{self.architect.card_slug}/vcard/"
+        ).content.decode()
+        self.assertIn("Kochi\\, Kerala", body)
+        self.assertIn("Houses\\; not towers", body)
+
+    def test_an_unpublished_card_has_no_vcard(self):
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(
+                f"/api/card/{self.architect.card_slug}/vcard/"
+            ).status_code,
+            404,
         )
 
 

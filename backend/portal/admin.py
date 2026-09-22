@@ -70,8 +70,8 @@ class ArchitectAdmin(UserAdmin):
         "last_login",
         "created_at",
     )
-    list_filter = ("is_active", "is_staff", "is_superuser")
-    search_fields = ("practice_name", "email", "phone")
+    list_filter = ("is_active", "is_staff", "is_superuser", "card_is_public")
+    search_fields = ("practice_name", "full_name", "email", "phone", "card_slug")
     readonly_fields = ("created_at", "last_login", "date_joined")
     actions = [approve_accounts, suspend_accounts]
 
@@ -90,7 +90,10 @@ class ArchitectAdmin(UserAdmin):
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Practice", {"fields": ("practice_name", "phone", "logo")}),
+        ("Person", {"fields": ("full_name", "profession", "bio", "avatar")}),
+        ("Practice", {"fields": ("practice_name", "logo")}),
+        ("Contact", {"fields": ("phone", "location", "website")}),
+        ("Profile card", {"fields": ("cover", "card_slug", "card_is_public")}),
         (
             "Permissions",
             {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")},

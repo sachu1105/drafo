@@ -43,6 +43,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Django does not serve /static/ once DEBUG is off, and in production
+    # nothing else is in front of it -- the frontend proxies /static straight
+    # through to here. Without this the admin loads as unstyled HTML.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -118,7 +122,11 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        # WhiteNoise, because in production nothing sits in front of Django
+        # serving files: the frontend proxies /static straight through. The
+        # manifest variant fingerprints the filenames so they can be cached
+        # forever, and pre-compresses them.
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
 

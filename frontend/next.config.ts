@@ -42,6 +42,17 @@ const nextConfig: NextConfig = {
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
         ],
       },
+      {
+        // A profile card is public, but it is handed to someone, not found by
+        // searching for them. There is no discovery anywhere in this product,
+        // and an architect who ticked "publish" did not thereby ask to be
+        // indexed. Nothing here blocks a WhatsApp or iMessage unfurl.
+        //
+        // No no-referrer: unlike a client link the slug is not a credential,
+        // and the card links out to the architect's own website.
+        source: "/c/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
     ];
   },
 };

@@ -9,6 +9,12 @@ import type { Project } from "@/lib/types";
  *
  * Not email, not an "invite your client" flow with a signup at the end of it.
  * One tap to WhatsApp, with the message already written.
+ *
+ * This screen used to carry three paragraphs and a sidebar listing what the
+ * client would see. All of it was written for somebody meeting the product
+ * for the first time, and all of it was still there on the fortieth visit.
+ * What is left is the link, the two things anyone does with it, and the way
+ * out if it leaks.
  */
 export function ShareTab({
   project,
@@ -56,111 +62,100 @@ export function ShareTab({
   }
 
   return (
-    <div>
+    <div className="max-w-[46rem]">
       <h2 className="sr-only">Share</h2>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* --- the link and the two things you do with it ---------------- */}
-        <div className="border border-rule bg-card p-5 sm:p-6 lg:col-span-2">
-          <h3 className="eyebrow">Client link</h3>
+      {/* --- the link and the three things you do with it ---------------- */}
+      <div className="border border-rule bg-card p-5 sm:p-6">
+        <p className="eyebrow">Client link</p>
 
-          <p
-            className="mt-3 break-all border border-ruleSoft bg-paper px-4 py-3
-                       font-mono text-[0.8125rem] leading-relaxed"
+        <p
+          className="mt-3 break-all border border-ruleSoft bg-paper px-4 py-3
+                     font-mono text-[0.8125rem] leading-relaxed"
+        >
+          {project.client_url}
+        </p>
+
+        <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
+          <a
+            href={whatsapp}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary sm:px-7"
           >
-            {project.client_url}
-          </p>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a
-              href={whatsapp}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary flex-1 sm:flex-none sm:px-7"
-            >
-              Share on WhatsApp
-            </a>
-            <button type="button" onClick={copy} className="btn-quiet flex-1 sm:flex-none">
+            Share on WhatsApp
+          </a>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <button type="button" onClick={copy} className="btn-quiet">
               {copied ? "Copied" : "Copy link"}
             </button>
             <a
               href={project.client_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-quiet flex-1 sm:flex-none"
+              className="btn-quiet"
             >
-              Preview as client
+              Preview
             </a>
           </div>
-
-          {!project.client_phone ? (
-            <p className="mt-4 text-[0.8125rem] leading-relaxed text-muted">
-              No phone number saved for {project.client_name}, so WhatsApp will
-              ask you who to send it to.
-            </p>
-          ) : null}
         </div>
 
-        {/* --- what they will actually experience ------------------------ */}
-        <aside className="border border-rule bg-card p-5 sm:p-6">
-          <h3 className="eyebrow">What {project.client_name} sees</h3>
-          <ul className="mt-4 space-y-3 text-[0.875rem] leading-relaxed text-muted">
-            <li>Your practice name and logo at the top — not ours.</li>
-            <li>The current drawing, readable without pinch-zoom.</li>
-            <li>One button to approve, and a box to leave a note.</li>
-            <li>No account, no password, no app to install.</li>
-          </ul>
-        </aside>
+        {/* Only when it is actually about to be a problem. */}
+        {!project.client_phone ? (
+          <p className="mt-4 text-[0.8125rem] leading-relaxed text-muted">
+            No phone number saved for {project.client_name}, so WhatsApp will
+            ask you who to send it to.
+          </p>
+        ) : null}
       </div>
 
-      <p className="mt-4 max-w-[70ch] text-[0.8125rem] leading-relaxed text-muted">
-        Anyone holding this link can see the project and approve drawings.
-        There is no password, and that is the point: your client opens it and
-        it works.
+      <p className="mt-3 text-[0.8125rem] leading-relaxed text-muted">
+        Anyone holding this link can view the project and approve drawings.
+        There is no password.
       </p>
 
       {/* --- the recovery path ------------------------------------------ */}
       <section className="mt-10 border-t border-rule pt-6">
-        <h3 className="eyebrow">If the link leaks</h3>
-        <p className="mt-2 max-w-[70ch] text-[0.875rem] leading-relaxed text-muted">
-          Rotating replaces it immediately. The old link stops working for
-          everyone, including {project.client_name}, so you will need to send
-          them the new one.
-        </p>
-
         {confirmRotate ? (
-          <div className="mt-4 animate-rise border border-brand bg-card p-5">
+          <div className="animate-rise border border-brand bg-card p-5">
             <p className="text-[0.9375rem] leading-relaxed">
-              Rotate the link for <strong className="font-medium">{project.name}</strong>?
-              The current link stops working the moment you do, and this cannot
-              be undone.
+              Replace the link for{" "}
+              <strong className="font-medium">{project.name}</strong>? The
+              current one stops working immediately, for {project.client_name}
+              {" "}too, and this cannot be undone.
             </p>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={rotate}
                 disabled={rotating}
                 className="btn-primary"
               >
-                {rotating ? "Rotating…" : "Yes, rotate it"}
+                {rotating ? "Replacing…" : "Replace it"}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmRotate(false)}
-                className="btn-quiet"
+                disabled={rotating}
+                className="btn-text px-3"
               >
                 Cancel
               </button>
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmRotate(true)}
-            className="btn-quiet mt-4"
-          >
-            Rotate link
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+            <p className="text-[0.875rem] text-muted">
+              Link leaked? Replace it with a new one.
+            </p>
+            <button
+              type="button"
+              onClick={() => setConfirmRotate(true)}
+              className="btn-quiet shrink-0"
+            >
+              Replace link
+            </button>
+          </div>
         )}
       </section>
     </div>

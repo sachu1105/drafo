@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Empty,
+  FormActions,
+  FormCard,
+  FormGrid,
+  Labelled,
+  MoneyInput,
+} from "@/components/architect/Form";
 import { api } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Milestone } from "@/lib/types";
@@ -56,34 +64,29 @@ export function PaymentsTab({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-display text-title">Payments</h2>
-          <p className="mt-1 text-[0.8125rem] text-muted">
-            A record of what is due and what has been paid. Money moves
-            elsewhere.
-          </p>
-        </div>
-        {!adding ? (
+      {!adding && list.length > 0 ? (
+        <div className="mb-5 flex justify-end">
           <button type="button" onClick={() => setAdding(true)} className="btn-quiet">
             Add milestone
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {adding ? (
-        <AddMilestoneForm
-          projectId={projectId}
-          onDone={async () => {
-            setAdding(false);
-            await refresh();
-          }}
-          onCancel={() => setAdding(false)}
-        />
+        <div className="mb-6">
+          <AddMilestoneForm
+            projectId={projectId}
+            onDone={async () => {
+              setAdding(false);
+              await refresh();
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        </div>
       ) : null}
 
       {list.length > 0 ? (
-        <dl className="mt-6 grid gap-px border border-rule bg-rule sm:grid-cols-3">
+        <dl className="grid gap-px border border-rule bg-rule sm:grid-cols-3">
           <Figure label="Total" value={formatMoney(total)} />
           <Figure label="Received" value={formatMoney(received)} tone="accent" />
           <Figure label="Outstanding" value={formatMoney(outstanding)} tone="ink" />
@@ -95,21 +98,11 @@ export function PaymentsTab({
           <p className="text-[0.875rem] text-faint">Loading…</p>
         ) : list.length === 0 ? (
           !adding ? (
-            <div className="border border-dashed border-rule bg-card px-6 py-12 text-center">
-              <p className="font-display text-[1.25rem]">No milestones yet</p>
-              <p className="mx-auto mt-2 max-w-[46ch] text-[0.9375rem] leading-relaxed text-muted">
-                Write the stages down — “Concept design approval”, “Working
-                drawings issued” — so asking for payment is never a
-                conversation you have to start from nothing.
-              </p>
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                className="btn-primary mt-6"
-              >
-                Add the first milestone
-              </button>
-            </div>
+            <Empty
+              title="No milestones yet"
+              action="Add a milestone"
+              onAction={() => setAdding(true)}
+            />
           ) : null
         ) : (
           <ul className="space-y-px bg-rule">
@@ -213,46 +206,31 @@ function AddMilestoneForm({
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="mt-5 animate-rise border border-rule bg-card p-5 sm:p-6"
-    >
-      <div className="grid gap-4 sm:grid-cols-[1fr_11rem]">
-        <label className="block">
-          <span className="eyebrow block">Stage</span>
+    <FormCard onSubmit={submit}>
+      <FormGrid>
+        <Labelled label="Stage" span={8}>
           <input
             type="text"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Concept design approval"
             autoFocus
-            className="field mt-2"
+            className="field"
           />
-        </label>
-        <label className="block">
-          <span className="eyebrow block">Amount</span>
-          <input
-            type="number"
-            step="0.01"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            className="field mt-2"
-          />
-        </label>
-      </div>
+        </Labelled>
 
-      <div className="mt-5 flex flex-wrap gap-2 border-t border-ruleSoft pt-4">
-        <button
-          type="submit"
-          disabled={busy || !title.trim() || !amount.trim()}
-          className="btn-primary"
-        >
-          {busy ? "Saving…" : "Add milestone"}
-        </button>
-        <button type="button" onClick={onCancel} className="btn-quiet">
-          Cancel
-        </button>
-      </div>
-    </form>
+        <Labelled label="Amount" span={4}>
+          <MoneyInput value={amount} onChange={setAmount} />
+        </Labelled>
+      </FormGrid>
+
+      <FormActions
+        submitLabel="Add milestone"
+        busyLabel="Saving…"
+        busy={busy}
+        disabled={!title.trim() || !amount.trim()}
+        onCancel={onCancel}
+      />
+    </FormCard>
   );
 }

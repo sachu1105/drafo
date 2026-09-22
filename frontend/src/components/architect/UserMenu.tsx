@@ -7,9 +7,13 @@ import type { Architect } from "@/lib/types";
 /**
  * The account menu.
  *
- * Just the practice mark and a chevron. The name is not repeated here --
- * it is already the wordmark on the left, and printing it twice in one bar
- * made neither instance read as the logo.
+ * Just the mark and a chevron. The name is not repeated in the bar -- it is
+ * already the wordmark on the left, and printing it twice made neither
+ * instance read as the logo.
+ *
+ * Inside, the header names the person first and the practice second, because
+ * that is the order the profile screen puts them in and the two are not the
+ * same thing.
  */
 export function UserMenu({
   architect,
@@ -69,7 +73,13 @@ export function UserMenu({
                      border border-rule bg-card shadow-menu"
         >
           <div className="border-b border-ruleSoft px-4 py-3">
-            <p className="truncate text-[0.875rem]">{architect.practice_name}</p>
+            <p className="truncate text-[0.875rem]">{architect.display_name}</p>
+            {architect.full_name &&
+            architect.practice_name !== architect.full_name ? (
+              <p className="truncate text-[0.8125rem] text-muted">
+                {architect.practice_name}
+              </p>
+            ) : null}
             <p className="truncate text-[0.8125rem] text-faint">{architect.email}</p>
           </div>
 
@@ -78,7 +88,7 @@ export function UserMenu({
               Projects
             </MenuLink>
             <MenuLink href="/profile" onSelect={() => setOpen(false)}>
-              Your practice
+              Your profile
             </MenuLink>
             {/* Staff only. A self-registered account has no business seeing a
                 door it cannot open. */}
@@ -138,15 +148,22 @@ function MenuLink({
   );
 }
 
-/** The practice's logo if there is one, otherwise its initials. */
+/**
+ * Their face if they have given one, otherwise the practice mark, otherwise
+ * initials. The photo comes first: this is the account menu, and the logo is
+ * already the wordmark two inches to the left.
+ */
 function Avatar({ architect }: { architect: Architect }) {
-  if (architect.logo_url) {
+  const picture = architect.avatar_url ?? architect.logo_url;
+  if (picture) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={architect.logo_url}
+        src={picture}
         alt=""
-        className="h-9 w-9 shrink-0 border border-rule object-contain"
+        className={`h-9 w-9 shrink-0 border border-rule ${
+          architect.avatar_url ? "object-cover" : "object-contain"
+        }`}
       />
     );
   }
@@ -162,7 +179,7 @@ function Avatar({ architect }: { architect: Architect }) {
 }
 
 function initials(architect: Architect): string {
-  const words = architect.practice_name.trim().split(/\s+/).filter(Boolean);
+  const words = architect.display_name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return architect.email.slice(0, 1).toUpperCase();
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();

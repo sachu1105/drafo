@@ -9,6 +9,7 @@ addressed through a view that re-checks who is asking.
 
 from __future__ import annotations
 
+import re
 import zlib
 
 from django.conf import settings
@@ -18,6 +19,7 @@ from django.db.models import Max
 from rest_framework import serializers
 
 from .models import (
+    RESERVED_SLUGS,
     Approval,
     Architect,
     Comment,
@@ -33,6 +35,10 @@ PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 JPEG_MAGIC = b"\xff\xd8\xff"
 
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
+
+# A card slug is a public URL segment, so it is checked here rather than left
+# to SlugField, which also accepts underscores and capitals.
+SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 def _file_urls(version: DrawingVersion, context: dict) -> tuple[str, str | None]:
@@ -61,51 +67,153 @@ def _file_urls(version: DrawingVersion, context: dict) -> tuple[str, str | None]
 
 
 MAX_LOGO_MB = 2
+MAX_AVATAR_MB = 4
+MAX_COVER_MB = 6  # a photograph across the full width of a card
+
+LOGO_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".svg")
+# No SVG for the avatar or the cover: both are rendered large on a page anyone
+# can open, and an SVG is a document that can carry script, not just a picture.
+AVATAR_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+COVER_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def _file_version(fieldfile) -> str:
+    """A stable cache-buster so a replaced image actually appears.
+
+    These URLs never change, and files are served with a long private cache,
+    so without this the architect uploads a new mark and keeps seeing the old
+    one. crc32 rather than hash(): hash() is salted per process and would
+    change on every restart.
+    """
+    return str(zlib.crc32(fieldfile.name.encode()) & 0xFFFFFFFF)
 
 
 def _logo_version(architect) -> str:
-    """A stable cache-buster so a replaced logo actually appears.
+    return _file_version(architect.logo)
 
-    The logo URL never changes, and files are served with a long private
-    cache, so without this the architect uploads a new mark and keeps seeing
-    the old one. crc32 rather than hash(): hash() is salted per process and
-    would change on every restart.
+
+def _too_big(label: str, size: int, max_mb: int) -> str:
+    """Say why the file was refused without appearing to contradict itself.
+
+    A file a kilobyte over a 2 MB limit is "2.0 MB" at one decimal place, and
+    "that logo is 2.0 MB, the limit is 2 MB" reads as a broken check rather
+    than a rule. Under a tenth of a megabyte over, say so in kilobytes.
     """
-    return str(zlib.crc32(architect.logo.name.encode()) & 0xFFFFFFFF)
+    over = size - max_mb * 1024 * 1024
+    if over < 1024 * 100:
+        return (
+            f"That {label} is just over the {max_mb} MB limit, by "
+            f"{max(over // 1024, 1)} KB. Try a smaller file."
+        )
+    return (
+        f"That {label} is {size / 1048576:.1f} MB and the limit is {max_mb} MB. "
+        f"Try a smaller file."
+    )
+
+
+def _check_image(upload, *, label: str, max_mb: int, extensions: tuple[str, ...]):
+    if upload is None:
+        return upload
+    if upload.size > max_mb * 1024 * 1024:
+        raise serializers.ValidationError(_too_big(label, upload.size, max_mb))
+    name = (upload.name or "").lower()
+    if not name.endswith(extensions):
+        readable = ", ".join(e[1:].upper() for e in extensions[:-1])
+        raise serializers.ValidationError(
+            f"Use a {readable} or {extensions[-1][1:].upper()}."
+        )
+    return upload
 
 
 class ArchitectSerializer(serializers.ModelSerializer):
+    """The architect's whole account, as their own settings screen reads it."""
+
     logo_url = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+    cover_url = serializers.SerializerMethodField()
+    card_url = serializers.SerializerMethodField()
+    display_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Architect
         fields = (
             "id",
             "email",
+            # the person
+            "full_name",
+            "profession",
+            "bio",
+            "avatar_url",
+            "display_name",
+            # the practice
             "practice_name",
-            "phone",
             "logo_url",
+            # contact
+            "phone",
+            "location",
+            "website",
+            # the shareable card
+            "cover_url",
+            "card_slug",
+            "card_url",
+            "card_is_public",
             "is_staff",
         )
-        read_only_fields = ("id", "email", "is_staff")
+        read_only_fields = ("id", "email", "is_staff", "card_slug", "display_name")
 
     def get_logo_url(self, obj) -> str | None:
         if not obj.logo:
             return None
-        return f"/api/practice/{obj.pk}/logo/?v={_logo_version(obj)}"
+        return f"/api/practice/{obj.pk}/logo/?v={_file_version(obj.logo)}"
+
+    def get_avatar_url(self, obj) -> str | None:
+        if not obj.avatar:
+            return None
+        return f"/api/practice/{obj.pk}/avatar/?v={_file_version(obj.avatar)}"
+
+    def get_cover_url(self, obj) -> str | None:
+        if not obj.cover:
+            return None
+        return f"/api/practice/{obj.pk}/cover/?v={_file_version(obj.cover)}"
+
+    def get_card_url(self, obj) -> str | None:
+        return obj.card_url
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     """What an architect may change about their own account.
 
-    Deliberately short. Email is the login and is not editable here, and
-    nothing on this serializer can touch is_staff, is_active or is_superuser --
-    a self-registered account must never be able to promote itself.
+    Email is the login and is not editable here, and nothing on this
+    serializer can touch is_staff, is_active or is_superuser -- a
+    self-registered account must never be able to promote itself.
+
+    The two remove_* flags exist because a multipart PATCH has no way to send
+    null: clearing a picture has to be its own field.
     """
+
+    remove_logo = serializers.BooleanField(write_only=True, required=False)
+    remove_avatar = serializers.BooleanField(write_only=True, required=False)
+    remove_cover = serializers.BooleanField(write_only=True, required=False)
 
     class Meta:
         model = Architect
-        fields = ("practice_name", "phone", "logo")
+        fields = (
+            "full_name",
+            "profession",
+            "bio",
+            "avatar",
+            "practice_name",
+            "logo",
+            "phone",
+            "location",
+            "website",
+            "cover",
+            "card_slug",
+            "card_is_public",
+            "remove_logo",
+            "remove_avatar",
+            "remove_cover",
+        )
 
     def validate_practice_name(self, value: str) -> str:
         value = value.strip()
@@ -113,18 +221,97 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Your practice needs a name.")
         return value
 
-    def validate_logo(self, upload):
-        if upload is None:
-            return upload
-        if upload.size > MAX_LOGO_MB * 1024 * 1024:
+    def validate_card_slug(self, value: str) -> str:
+        value = (value or "").strip().lower()
+        if not value:
+            raise serializers.ValidationError("Your card needs a link.")
+        if len(value) < 3:
             raise serializers.ValidationError(
-                f"That logo is {upload.size / 1048576:.1f} MB. "
-                f"The limit is {MAX_LOGO_MB} MB."
+                "Use at least three characters."
             )
-        name = (upload.name or "").lower()
-        if not name.endswith((".png", ".jpg", ".jpeg", ".webp", ".svg")):
-            raise serializers.ValidationError("Use a PNG, JPG, WEBP or SVG.")
-        return upload
+        if not SLUG_PATTERN.fullmatch(value):
+            raise serializers.ValidationError(
+                "Use lowercase letters, numbers and hyphens only."
+            )
+        if value in RESERVED_SLUGS:
+            raise serializers.ValidationError("That link is reserved. Try another.")
+        taken = Architect.objects.filter(card_slug=value)
+        if self.instance is not None:
+            taken = taken.exclude(pk=self.instance.pk)
+        if taken.exists():
+            raise serializers.ValidationError("Someone already has that link.")
+        return value
+
+    def validate_logo(self, upload):
+        return _check_image(
+            upload, label="logo", max_mb=MAX_LOGO_MB, extensions=LOGO_EXTENSIONS
+        )
+
+    def validate_avatar(self, upload):
+        return _check_image(
+            upload, label="photo", max_mb=MAX_AVATAR_MB, extensions=AVATAR_EXTENSIONS
+        )
+
+    def validate_cover(self, upload):
+        return _check_image(
+            upload, label="cover", max_mb=MAX_COVER_MB, extensions=COVER_EXTENSIONS
+        )
+
+    def update(self, instance, validated_data):
+        # An upload in the same request wins over the remove flag; the form
+        # only ever sends one of the two.
+        for field in ("logo", "avatar", "cover"):
+            dropped = validated_data.pop(f"remove_{field}", False)
+            if dropped and field not in validated_data:
+                validated_data[field] = None
+        return super().update(instance, validated_data)
+
+
+class ProfileCardSerializer(serializers.ModelSerializer):
+    """The card, as anyone holding the link reads it.
+
+    Every field on it was typed by the architect for exactly this purpose.
+    The email is the one thing that is not: it is their sign-in, so it is
+    published only through the card's own address, never as the login.
+    """
+
+    name = serializers.CharField(source="display_name", read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+    logo_url = serializers.SerializerMethodField()
+    cover_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Architect
+        fields = (
+            "name",
+            "profession",
+            "practice_name",
+            "bio",
+            "phone",
+            "email",
+            "location",
+            "website",
+            "avatar_url",
+            "logo_url",
+            "cover_url",
+            "card_slug",
+        )
+        read_only_fields = fields
+
+    def get_avatar_url(self, obj) -> str | None:
+        if not obj.avatar:
+            return None
+        return f"/api/card/{obj.card_slug}/avatar/?v={_file_version(obj.avatar)}"
+
+    def get_logo_url(self, obj) -> str | None:
+        if not obj.logo:
+            return None
+        return f"/api/card/{obj.card_slug}/logo/?v={_file_version(obj.logo)}"
+
+    def get_cover_url(self, obj) -> str | None:
+        if not obj.cover:
+            return None
+        return f"/api/card/{obj.card_slug}/cover/?v={_file_version(obj.cover)}"
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -141,7 +328,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Architect
-        fields = ("email", "practice_name", "phone", "password")
+        fields = ("email", "full_name", "practice_name", "phone", "password")
 
     def validate_email(self, value: str) -> str:
         value = value.strip().lower()

@@ -12,6 +12,8 @@ import type { Architect } from "./types";
 
 export type Registration = {
   email: string;
+  /** Optional: an account that never gives one is named by its practice. */
+  full_name: string;
   practice_name: string;
   phone: string;
   password: string;
@@ -31,7 +33,7 @@ export async function login(email: string, password: string): Promise<Architect>
   });
 }
 
-/** Practice name, phone and logo -- the things the client actually sees. */
+/** Everything on the profile screen: the person, the practice and the card. */
 export async function updateProfile(form: FormData): Promise<Architect> {
   return api<Architect>("/auth/me/", { method: "PATCH", body: form });
 }

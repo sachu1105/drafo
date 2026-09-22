@@ -3,8 +3,9 @@ URLs.
 
 Two namespaces, deliberately not sharing a prefix:
 
-    /api/...       architect, session required
-    /api/p/<token> client, token is the credential
+    /api/...        architect, session required
+    /api/p/<token>  client, token is the credential
+    /api/card/<slug> public, the architect's own card and nothing else
 
 Reading this file should make it obvious which side any request is on.
 """
@@ -90,6 +91,24 @@ urlpatterns = [
         views.PracticeLogoView.as_view(),
         name="practice-logo",
     ),
+    path(
+        "practice/<int:architect_id>/avatar/",
+        views.PracticeAvatarView.as_view(),
+        name="practice-avatar",
+    ),
+    path(
+        "practice/<int:architect_id>/cover/",
+        views.PracticeCoverView.as_view(),
+        name="practice-cover",
+    ),
+    # --- the profile card: public, and the only thing here that is ---
+    path("card/<slug:slug>/", views.CardView.as_view(), name="card"),
+    path(
+        "card/<slug:slug>/avatar/", views.CardAvatarView.as_view(), name="card-avatar"
+    ),
+    path("card/<slug:slug>/logo/", views.CardLogoView.as_view(), name="card-logo"),
+    path("card/<slug:slug>/cover/", views.CardCoverView.as_view(), name="card-cover"),
+    path("card/<slug:slug>/vcard/", views.CardVCardView.as_view(), name="card-vcard"),
     # --- client: everything below is reachable with the token alone ---
     path("p/<str:token>/", views.ClientProjectView.as_view(), name="client-project"),
     path(
