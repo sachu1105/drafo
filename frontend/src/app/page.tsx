@@ -372,7 +372,7 @@ function ClientSide() {
             five is an awkward number, and the panel beside it takes whatever
             height the list ends up at, so nothing has to be padded out. */}
         <div className="mt-14 grid gap-10 lg:grid-cols-[2fr_1fr] lg:gap-12">
-          <ul className="border-b border-rule">
+          <ul className="self-start border-b border-rule">
             {CLIENT_PROMISES.map(([Icon, title, body]) => (
               <li
                 key={title}
@@ -399,8 +399,37 @@ function ClientSide() {
               block that is not on paper. A real button rather than the text
               link that was here: this is the section's whole purpose and it
               was the quietest thing in it. Paper on brandDark is 7.3:1. */}
-          <div className="flex flex-col justify-center bg-brandDark p-8 text-paper">
-            <div>
+          {/* The inset is set per part rather than once on the card: the
+              picture wants to sit close to the edge, and the words do not. One
+              padding for both meant the image could only come in as far as the
+              text was comfortable. */}
+          <div className="flex flex-col bg-brandDark text-paper">
+            {/* Decorative, so the alt is empty: it is a mood, not information,
+                and naming it would only add noise to a screen reader. The file
+                carries its own rounded corners as transparency, so the card
+                shows through them and no radius is set here. */}
+            {/* Once the two columns sit side by side the picture takes
+                whatever height is left after the words, so the card ends level
+                with the list instead of hanging below it -- and stays level if
+                either side's copy changes. Stacked, there is nothing to match,
+                so it goes back to its own proportions.
+
+                The file's baked-in corner radius works out to about 3px at
+                this size, which object-cover crops away; `rounded` puts back
+                the same barely-there softness. */}
+            <div className="p-3 sm:p-4 lg:flex-1">
+              <div className="relative aspect-[3896/3160] w-full overflow-hidden rounded lg:aspect-auto lg:h-full">
+                <Image
+                  src="/grass.png"
+                  alt=""
+                  fill
+                  sizes="(min-width: 1024px) 22rem, (min-width: 640px) 45vw, 90vw"
+                  className="object-cover"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col px-6 pb-6 pt-5 sm:px-8 sm:pb-8">
               <h3 className="font-display text-[1.5rem] leading-snug">
                 The only way to know
               </h3>
@@ -408,20 +437,20 @@ function ClientSide() {
                 Send one real drawing to one real client and watch what they do
                 with it. That is the whole test.
               </p>
+
+              <Link
+                href="/register"
+                className="mt-8 inline-flex min-h-[44px] items-center justify-center
+                           bg-paper px-5 py-3 text-[0.9375rem] text-brandDark
+                           transition-colors duration-150 hover:bg-sand"
+              >
+                Request an account
+              </Link>
+
+              <p className="mt-4 text-[0.8125rem] leading-relaxed text-sand">
+                Approved by hand while we are working with our first practices.
+              </p>
             </div>
-
-            <Link
-              href="/register"
-              className="mt-8 inline-flex min-h-[44px] items-center justify-center
-                         bg-paper px-5 py-3 text-[0.9375rem] text-brandDark
-                         transition-colors duration-150 hover:bg-sand"
-            >
-              Request an account
-            </Link>
-
-            <p className="mt-4 text-[0.8125rem] leading-relaxed text-sand">
-              Approved by hand while we are working with our first practices.
-            </p>
           </div>
         </div>
       </div>
