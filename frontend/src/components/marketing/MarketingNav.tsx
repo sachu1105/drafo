@@ -65,7 +65,7 @@ export function MarketingNav() {
                 Sign in
               </Link>
               <Link href="/register" className="btn-primary px-4 py-2">
-                Request an account
+                Create an account
               </Link>
             </>
           )}
@@ -122,7 +122,7 @@ export function MarketingNav() {
               ) : (
                 <>
                   <Link href="/register" className="btn-primary">
-                    Request an account
+                    Create an account
                   </Link>
                   <Link href="/login" className="btn-quiet">
                     Sign in

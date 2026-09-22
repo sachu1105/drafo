@@ -133,7 +133,7 @@ export default function RegisterPage() {
         ) : null}
 
         <button type="submit" disabled={busy} className="btn-primary w-full">
-          {busy ? "Creating…" : "Request an account"}
+          {busy ? "Creating…" : "Create an account"}
         </button>
       </form>
 

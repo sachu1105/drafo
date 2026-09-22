@@ -91,7 +91,7 @@ function Hero() {
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Link href="/register" className="btn-primary">
-                Request an account
+                Create an account
               </Link>
               <Link href="/login" className="btn-quiet">
                 Sign in
@@ -114,7 +114,7 @@ function Hero() {
               asset; the spill is transparent, and the section clips it. */}
           <div className="animate-rise lg:-mr-10 lg:w-[calc(100%_+_2.5rem)]">
             <Image
-              src="/heroimages.png"
+              src="/heroimageone.png"
               alt={
                 "One project in Atelier, with drawings, materials, payment "
                 + "milestones and client access branching off it."
@@ -352,15 +352,16 @@ function ClientSide() {
             They install nothing and sign up for nothing
           </h2>
 
+          {/* Only the reason why, and the turn. The sentences that used to
+              follow -- no password, no OTP, no app, a link that simply opens
+              -- are the list below said twice, and the list says them better,
+              one to a line with a mark against each. */}
           <div className="lg:pt-1">
             <p className="max-w-reading text-[1.0625rem] leading-relaxed text-muted">
               Your client is often in their fifties, sometimes abroad, and has
               no interest in learning software. The moment a tool asks them to
               create an account, they say “just send it on WhatsApp”.
-            </p>
-            <p className="mt-4 max-w-reading text-[1.0625rem] leading-relaxed text-muted">
-              So Atelier never asks. There is no client password, no OTP, no
-              app. There is a long private link, and it simply opens.
+              So Atelier never asks.
             </p>
           </div>
         </div>
@@ -440,16 +441,12 @@ function ClientSide() {
 
               <Link
                 href="/register"
-                className="mt-8 inline-flex min-h-[44px] items-center justify-center
+                className="mt-6 inline-flex min-h-[44px] items-center justify-center
                            bg-paper px-5 py-3 text-[0.9375rem] text-brandDark
                            transition-colors duration-150 hover:bg-sand"
               >
-                Request an account
+                Create an account
               </Link>
-
-              <p className="mt-4 text-[0.8125rem] leading-relaxed text-sand">
-                Approved by hand while we are working with our first practices.
-              </p>
             </div>
           </div>
         </div>
