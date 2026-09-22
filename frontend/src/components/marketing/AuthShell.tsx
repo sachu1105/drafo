@@ -10,14 +10,14 @@ import Link from "next/link";
  * all. The bar is the one the signed-in app already uses, so crossing into
  * the auth pages does not feel like arriving at a different product.
  *
- * Two routes home rather than one, deliberately: the wordmark because that is
- * where people reach first, and a named link because not everyone knows that.
+ * The wordmark is the way back. It is where people reach for it, and a second
+ * labelled link beside it said the same thing twice.
  */
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-rule">
-        <div className="mx-auto flex w-full max-w-shell items-center justify-between gap-4 px-4 py-3.5 sm:px-8">
+        <div className="mx-auto flex w-full max-w-shell items-center px-4 py-3.5 sm:px-8">
           <Link
             href="/"
             className="flex min-h-[44px] items-center font-display text-[1.375rem]
@@ -25,20 +25,6 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
                        hover:opacity-70"
           >
             Atelier
-          </Link>
-
-          <Link
-            href="/"
-            className="group flex min-h-[44px] items-center gap-2 text-[0.875rem]
-                       text-muted transition-colors duration-150 hover:text-ink"
-          >
-            <span
-              aria-hidden
-              className="transition-transform duration-150 group-hover:-translate-x-0.5"
-            >
-              ←
-            </span>
-            Back to the site
           </Link>
         </div>
       </header>

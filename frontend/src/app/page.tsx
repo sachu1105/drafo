@@ -45,7 +45,6 @@ export default function Home() {
         <How />
         <Features />
         <ClientSide />
-        <Closing />
       </main>
       <Footer />
     </>
@@ -366,83 +365,67 @@ function ClientSide() {
           </div>
         </div>
 
-        {/* Five promises and a way in. Six cells divide evenly at both two and
-            three columns, so the grid never ends on a half-empty row -- and
-            the cell that would otherwise be the gap does the most work. */}
-        <ul className="mt-14 grid gap-px border border-rule bg-rule sm:grid-cols-2 lg:grid-cols-3">
-          {CLIENT_PROMISES.map(([Icon, title, body]) => (
-            <li key={title} className="bg-card p-6 sm:p-7">
-              <div className="flex h-6 items-center">
+        {/* Two thirds list, one third door.
+            Six equal cells made every promise weigh the same as the call to
+            action and left the short ones trailing empty space to the bottom
+            of their row. A ruled list carries five items without caring that
+            five is an awkward number, and the panel beside it takes whatever
+            height the list ends up at, so nothing has to be padded out. */}
+        <div className="mt-14 grid gap-10 lg:grid-cols-[2fr_1fr] lg:gap-12">
+          <ul className="border-b border-rule">
+            {CLIENT_PROMISES.map(([Icon, title, body]) => (
+              <li
+                key={title}
+                className="flex gap-5 border-t border-rule py-6"
+              >
                 <Icon
                   aria-hidden
                   strokeWidth={1.75}
-                  className="h-6 w-6 text-accent"
+                  className="mt-0.5 h-6 w-6 shrink-0 text-brand"
                 />
-              </div>
-              <h3 className="mt-3.5 font-display text-[1.25rem] leading-snug">
-                {title}
-              </h3>
-              <p className="mt-2 text-[0.9375rem] leading-relaxed text-muted">
-                {body}
-              </p>
-            </li>
-          ))}
+                <div>
+                  <h3 className="font-display text-[1.25rem] leading-snug">
+                    {title}
+                  </h3>
+                  <p className="mt-1.5 max-w-[52ch] text-[0.9375rem] leading-relaxed text-muted">
+                    {body}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
 
-          {/* Sand, not card: the one cell here that is a door rather than a
-              statement. Body copy goes to ink because muted on sand lands at
-              4.5:1, which is too close to the line to rely on. */}
-          <li className="flex flex-col justify-between bg-sand p-6 sm:p-7">
+          {/* The one place on this page asking for something, so it is the one
+              block that is not on paper. A real button rather than the text
+              link that was here: this is the section's whole purpose and it
+              was the quietest thing in it. Paper on brandDark is 7.3:1. */}
+          <div className="flex flex-col justify-center bg-brandDark p-8 text-paper">
             <div>
-              <div aria-hidden className="flex h-6 items-center" />
-              <h3 className="mt-3.5 font-display text-[1.25rem] leading-snug">
+              <h3 className="font-display text-[1.5rem] leading-snug">
                 The only way to know
               </h3>
-              <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink">
-                Send one real drawing to one real client and watch what they
-                do with it. That is the whole test.
+              <p className="mt-3 text-[0.9375rem] leading-relaxed text-sand">
+                Send one real drawing to one real client and watch what they do
+                with it. That is the whole test.
               </p>
             </div>
 
             <Link
               href="/register"
-              className="group mt-6 inline-flex items-center gap-2 text-[0.9375rem] text-accent underline decoration-olive underline-offset-4 hover:decoration-accent"
+              className="mt-8 inline-flex min-h-[44px] items-center justify-center
+                         bg-paper px-5 py-3 text-[0.9375rem] text-brandDark
+                         transition-colors duration-150 hover:bg-sand"
             >
               Request an account
-              <span
-                aria-hidden
-                className="transition-transform group-hover:translate-x-0.5"
-              >
-                →
-              </span>
             </Link>
-          </li>
-        </ul>
-      </div>
-    </section>
-  );
-}
 
-/* --------------------------------------------------------------- closing */
-
-function Closing() {
-  return (
-    <section>
-      <div className="mx-auto max-w-shell px-4 py-20 sm:px-8 sm:py-28">
-        <div className="flex flex-wrap items-center justify-between gap-8">
-          <div>
-            <h2 className="max-w-[18ch] font-display text-display">
-              Put your next revision on the record
-            </h2>
-            <p className="mt-4 max-w-reading text-[0.9375rem] leading-relaxed text-muted">
-              Accounts are approved by hand while we are working with our first
-              practices, so tell us who you are and we will get you set up.
+            <p className="mt-4 text-[0.8125rem] leading-relaxed text-sand">
+              Approved by hand while we are working with our first practices.
             </p>
           </div>
-          <Link href="/register" className="btn-primary">
-            Request an account
-          </Link>
         </div>
       </div>
     </section>
   );
 }
+
