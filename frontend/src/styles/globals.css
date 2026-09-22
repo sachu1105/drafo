@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+
+  /* Nothing on the client's phone may ever scroll sideways. */
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: #d8dcc8;
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+  }
+
+  /* iOS zooms the page when a control smaller than 16px takes focus. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  :focus-visible {
+    outline: 2px solid #4e635e;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* The small capitalised rubric that labels a section. */
+  .eyebrow {
+    @apply text-label font-medium uppercase text-faint;
+  }
+
+  .rule-top {
+    @apply border-t border-rule;
+  }
+
+  .field {
+    @apply w-full rounded-none border border-rule bg-card px-3.5 py-3 text-ink
+           placeholder:text-faint focus:border-brand focus:outline-none;
+  }
+
+  /* Every tappable thing clears 44px, because it is tapped with a thumb. */
+  .btn {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 px-5 py-3
+           text-[0.9375rem] font-medium transition-colors duration-150
+           disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand text-paper hover:bg-brandDark;
+  }
+
+  .btn-quiet {
+    @apply btn border border-rule bg-card text-ink hover:border-brand;
+  }
+
+  .btn-text {
+    @apply btn px-0 text-muted underline decoration-rule hover:text-ink;
+  }
+}
+
+/**
+ * The timer on the open feature panel.
+ *
+ * scaleX rather than width so the browser animates it on the compositor and
+ * never reflows the accordion beneath it. The element is full width already;
+ * transform-origin is set at the call site.
+ */
+@keyframes feature-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}

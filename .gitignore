@@ -1,0 +1,32 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# django
+*.sqlite3
+/media/*
+!/media/.gitkeep
+/backend/staticfiles/
+
+# node
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# env
+.env
+.env.local
+
+# os / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# local test / dev artefacts
+/backend/media/
+*.tsbuildinfo
