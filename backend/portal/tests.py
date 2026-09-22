@@ -980,6 +980,190 @@ class ProfileCardTests(MediaSandbox):
         )
 
 
+class MaterialInvoiceTests(MediaSandbox):
+    """The bill behind a selection.
+
+    It is a PDF, it belongs to one project, and the client is meant to be able
+    to open it -- but only through their own token.
+    """
+
+    def setUp(self):
+        self.architect = make_architect("a@example.com", "Studio A")
+        self.client.force_login(self.architect)
+        self.project = Project.objects.create(
+            architect=self.architect, name="Villa", client_name="Mr K"
+        )
+
+    def add_material(self, **files):
+        data = {"category": "flooring", "name": "Vitrified tile"}
+        data.update(files)
+        return self.client.post(
+            f"/api/projects/{self.project.pk}/materials/", data=data
+        )
+
+    def test_a_pdf_invoice_can_be_attached_and_opened(self):
+        response = self.add_material(
+            invoice=SimpleUploadedFile("bill.pdf", PDF, content_type="application/pdf")
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertEqual(body["invoice_name"], "bill.pdf")
+        self.assertIn(f"/api/materials/{body['id']}/invoice/", body["invoice_url"])
+
+        served = self.client.get(body["invoice_url"])
+        self.assertEqual(served.status_code, 200)
+        self.assertEqual(served["Content-Type"], "application/pdf")
+
+    def test_a_material_without_one_reports_none(self):
+        body = self.add_material().json()
+        self.assertIsNone(body["invoice_url"])
+        self.assertEqual(body["invoice_name"], "")
+        self.assertEqual(
+            self.client.get(f"/api/materials/{body['id']}/invoice/").status_code, 404
+        )
+
+    def test_photo_and_invoice_are_different_files(self):
+        body = self.add_material(
+            photo=SimpleUploadedFile("tile.png", PNG, content_type="image/png"),
+            invoice=SimpleUploadedFile("bill.pdf", PDF, content_type="application/pdf"),
+        ).json()
+        self.assertIsNotNone(body["photo_url"])
+        self.assertIsNotNone(body["invoice_url"])
+        self.assertNotEqual(body["photo_url"], body["invoice_url"])
+        self.assertEqual(
+            self.client.get(body["photo_url"])["Content-Type"], "image/png"
+        )
+        self.assertEqual(
+            self.client.get(body["invoice_url"])["Content-Type"], "application/pdf"
+        )
+
+    def test_the_client_can_open_it_through_their_token(self):
+        self.add_material(
+            invoice=SimpleUploadedFile("bill.pdf", PDF, content_type="application/pdf")
+        )
+        self.client.logout()
+
+        body = self.client.get(f"/api/p/{self.project.access_token}/").json()
+        url = body["materials"][0]["invoice_url"]
+        self.assertIn(f"/api/p/{self.project.access_token}/", url)
+        served = self.client.get(url)
+        self.assertEqual(served.status_code, 200)
+        self.assertEqual(served["Content-Type"], "application/pdf")
+
+    def test_a_wrong_token_cannot_open_it(self):
+        material = self.add_material(
+            invoice=SimpleUploadedFile("bill.pdf", PDF, content_type="application/pdf")
+        ).json()
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(
+                f"/api/p/{'x' * 43}/materials/{material['id']}/invoice/"
+            ).status_code,
+            404,
+        )
+
+    def test_another_architects_invoice_is_not_reachable(self):
+        material = self.add_material(
+            invoice=SimpleUploadedFile("bill.pdf", PDF, content_type="application/pdf")
+        ).json()
+        intruder = make_architect("b@example.com", "Studio B")
+        self.client.force_login(intruder)
+        self.assertEqual(
+            self.client.get(f"/api/materials/{material['id']}/invoice/").status_code,
+            404,
+        )
+
+    def test_an_invoice_that_is_not_what_it_claims_is_refused(self):
+        response = self.add_material(
+            invoice=SimpleUploadedFile(
+                "bill.pdf", b"not a pdf at all", content_type="application/pdf"
+            )
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_an_executable_is_refused(self):
+        response = self.add_material(
+            invoice=SimpleUploadedFile("bill.exe", b"MZ\x90\x00", content_type="application/pdf")
+        )
+        self.assertEqual(response.status_code, 400)
+
+
+class ArchitectNotesTests(MediaSandbox):
+    """A note the architect writes has to come back when the page reloads.
+
+    It was being saved and emailed and shown to the client, and never shown
+    again to the person who wrote it -- so these assert the round trip, not
+    just the write.
+    """
+
+    def setUp(self):
+        self.architect = make_architect("a@example.com", "Studio A")
+        self.architect.full_name = "Anna Mathew"
+        self.architect.save(update_fields=["full_name"])
+        self.client.force_login(self.architect)
+        self.project = Project.objects.create(
+            architect=self.architect, name="Villa", client_name="Mr K"
+        )
+        self.set = DrawingSet.objects.create(project=self.project, title="Plan")
+        self.version = make_version(self.set)
+
+    def post_note(self, body="Moved the kitchen window 300mm."):
+        return self.client.post(
+            f"/api/drawing-versions/{self.version.pk}/comments/",
+            data={"body": body},
+            content_type="application/json",
+        )
+
+    def test_a_note_comes_back_on_the_versions_endpoint(self):
+        self.assertEqual(self.post_note().status_code, 201)
+
+        response = self.client.get(f"/api/drawing-sets/{self.set.pk}/versions/")
+        self.assertEqual(response.status_code, 200)
+        versions = response.json()
+        self.assertEqual(len(versions), 1)
+        notes = versions[0]["comments"]
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]["body"], "Moved the kitchen window 300mm.")
+        self.assertEqual(notes[0]["author_type"], "architect")
+        self.assertEqual(versions[0]["comment_count"], 1)
+
+    def test_a_note_is_signed_with_the_person_not_the_practice(self):
+        self.post_note()
+        note = self.client.get(
+            f"/api/drawing-sets/{self.set.pk}/versions/"
+        ).json()[0]["comments"][0]
+        self.assertEqual(note["author_name"], "Anna Mathew")
+
+    def test_a_note_falls_back_to_the_practice_name(self):
+        self.architect.full_name = ""
+        self.architect.save(update_fields=["full_name"])
+        self.post_note()
+        note = self.client.get(
+            f"/api/drawing-sets/{self.set.pk}/versions/"
+        ).json()[0]["comments"][0]
+        self.assertEqual(note["author_name"], "Studio A")
+
+    def test_notes_come_back_in_the_order_they_were_written(self):
+        for body in ("First.", "Second.", "Third."):
+            self.post_note(body)
+        notes = self.client.get(
+            f"/api/drawing-sets/{self.set.pk}/versions/"
+        ).json()[0]["comments"]
+        self.assertEqual([n["body"] for n in notes], ["First.", "Second.", "Third."])
+
+    def test_the_client_sees_the_architects_note(self):
+        self.post_note()
+        self.client.logout()
+        body = self.client.get(
+            f"/api/p/{self.project.access_token}/drawing-sets/{self.set.pk}/"
+        ).json()
+        self.assertEqual(body["versions"][0]["comments"][0]["body"],
+                         "Moved the kitchen window 300mm.")
+
+    def test_an_empty_note_is_refused(self):
+        self.assertEqual(self.post_note("   ").status_code, 400)
+
+
 class ContentTypeTests(MediaSandbox):
     """We send nosniff, so a wrong Content-Type means the browser refuses to
     render the image at all. Every file must go out under its real name."""

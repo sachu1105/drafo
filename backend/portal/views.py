@@ -296,7 +296,9 @@ class ArchitectCommentCreateView(ArchitectScopedMixin, APIView):
         comment = Comment.objects.create(
             drawing_version=version,
             author_type=Comment.AuthorType.ARCHITECT,
-            author_name=request.user.practice_name or request.user.email,
+            # The person, not the letterhead: a note is written by a human
+            # and the client is reading it as one.
+            author_name=request.user.display_name or request.user.email,
             body=form.validated_data["body"],
         )
         emails.notify_of_comment(comment)
@@ -373,6 +375,16 @@ class ArchitectMaterialPhotoView(APIView):
         if not material.photo:
             raise Http404
         return stream(material.photo, download_name=stored_name(material.photo))
+
+
+class ArchitectMaterialInvoiceView(APIView):
+    def get(self, request, material_id):
+        material = get_object_or_404(
+            Material.objects.filter(project__architect=request.user), pk=material_id
+        )
+        if not material.invoice:
+            raise Http404
+        return stream(material.invoice, download_name=stored_name(material.invoice))
 
 
 class PracticeLogoView(APIView):
@@ -690,6 +702,16 @@ class ClientMaterialPhotoView(ClientBaseView):
         if not material.photo:
             raise Http404
         return stream(material.photo, download_name=stored_name(material.photo))
+
+
+class ClientMaterialInvoiceView(ClientBaseView):
+    """The bill behind a selection. Token-scoped like everything else here."""
+
+    def get(self, request, token, material_id):
+        material = get_object_or_404(request.project.materials, pk=material_id)
+        if not material.invoice:
+            raise Http404
+        return stream(material.invoice, download_name=stored_name(material.invoice))
 
 
 class ClientLogoView(ClientBaseView):

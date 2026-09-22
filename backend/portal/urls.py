@@ -75,6 +75,11 @@ urlpatterns = [
         views.ArchitectMaterialPhotoView.as_view(),
         name="material-photo",
     ),
+    path(
+        "materials/<int:material_id>/invoice/",
+        views.ArchitectMaterialInvoiceView.as_view(),
+        name="material-invoice",
+    ),
     # --- architect: milestones ---
     path(
         "projects/<int:project_id>/milestones/",
@@ -135,6 +140,11 @@ urlpatterns = [
         "p/<str:token>/materials/<int:material_id>/photo/",
         views.ClientMaterialPhotoView.as_view(),
         name="client-material-photo",
+    ),
+    path(
+        "p/<str:token>/materials/<int:material_id>/invoice/",
+        views.ClientMaterialInvoiceView.as_view(),
+        name="client-material-invoice",
     ),
     path(
         "p/<str:token>/milestones/",

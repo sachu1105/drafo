@@ -36,6 +36,30 @@ JPEG_MAGIC = b"\xff\xd8\xff"
 
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 
+MAX_INVOICE_MB = 10
+
+
+def extension_of(upload) -> str:
+    name = (upload.name or "").lower()
+    return name[name.rfind(".") :] if "." in name else ""
+
+
+def check_real_type(upload, extension: str) -> bool:
+    """Trust the bytes, not the extension.
+
+    The accept= attribute on the input is a courtesy to the file picker; this
+    is the actual gate. Shared by drawing uploads and material invoices so
+    that the second one cannot quietly be the laxer of the two.
+    """
+    upload.seek(0)
+    head = upload.read(8)
+    upload.seek(0)
+    if extension == ".pdf":
+        return head.startswith(PDF_MAGIC)
+    if extension == ".png":
+        return head.startswith(PNG_MAGIC)
+    return head.startswith(JPEG_MAGIC)
+
 # A card slug is a public URL segment, so it is checked here rather than left
 # to SlugField, which also accepts underscores and capitals.
 SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
@@ -483,29 +507,14 @@ class DrawingVersionCreateSerializer(serializers.ModelSerializer):
         fields = ("id", "file", "notes")
 
     def validate_file(self, upload):
-        max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
-        if upload.size > max_bytes:
+        if upload.size > settings.MAX_UPLOAD_MB * 1024 * 1024:
             raise serializers.ValidationError(
-                f"That file is {upload.size / 1048576:.1f} MB. "
-                f"The limit is {settings.MAX_UPLOAD_MB} MB."
+                _too_big("file", upload.size, settings.MAX_UPLOAD_MB)
             )
-        name = (upload.name or "").lower()
-        extension = name[name.rfind(".") :] if "." in name else ""
+        extension = extension_of(upload)
         if extension not in ALLOWED_EXTENSIONS:
             raise serializers.ValidationError("Upload a PDF, PNG or JPG.")
-
-        # Trust the bytes, not the extension: the browser check is a courtesy,
-        # this one is the actual gate.
-        upload.seek(0)
-        head = upload.read(8)
-        upload.seek(0)
-        if extension == ".pdf":
-            ok = head.startswith(PDF_MAGIC)
-        elif extension == ".png":
-            ok = head.startswith(PNG_MAGIC)
-        else:
-            ok = head.startswith(JPEG_MAGIC)
-        if not ok:
+        if not check_real_type(upload, extension):
             raise serializers.ValidationError(
                 "That file is not the type its name claims to be."
             )
@@ -586,6 +595,7 @@ class DrawingSetDetailSerializer(DrawingSetSerializer):
 
 class MaterialSerializer(serializers.ModelSerializer):
     photo_url = serializers.SerializerMethodField()
+    invoice_url = serializers.SerializerMethodField()
     category_label = serializers.CharField(
         source="get_category_display", read_only=True
     )
@@ -600,14 +610,27 @@ class MaterialSerializer(serializers.ModelSerializer):
             "brand",
             "photo",
             "photo_url",
+            "invoice",
+            "invoice_url",
+            "invoice_name",
             "price",
             "unit",
             "notes",
             "selected_at",
             "created_at",
         )
-        read_only_fields = ("id", "created_at", "photo_url", "category_label")
-        extra_kwargs = {"photo": {"write_only": True, "required": False}}
+        read_only_fields = (
+            "id",
+            "created_at",
+            "photo_url",
+            "invoice_url",
+            "invoice_name",
+            "category_label",
+        )
+        extra_kwargs = {
+            "photo": {"write_only": True, "required": False},
+            "invoice": {"write_only": True, "required": False},
+        }
 
     def get_photo_url(self, obj) -> str | None:
         if not obj.photo:
@@ -616,6 +639,42 @@ class MaterialSerializer(serializers.ModelSerializer):
         if token:
             return f"/api/p/{token}/materials/{obj.pk}/photo/"
         return f"/api/materials/{obj.pk}/photo/"
+
+    def get_invoice_url(self, obj) -> str | None:
+        if not obj.invoice:
+            return None
+        token = self.context.get("token")
+        if token:
+            return f"/api/p/{token}/materials/{obj.pk}/invoice/"
+        return f"/api/materials/{obj.pk}/invoice/"
+
+    def validate_invoice(self, upload):
+        if upload is None:
+            return upload
+        if upload.size > MAX_INVOICE_MB * 1024 * 1024:
+            raise serializers.ValidationError(
+                _too_big("invoice", upload.size, MAX_INVOICE_MB)
+            )
+        extension = extension_of(upload)
+        if extension not in ALLOWED_EXTENSIONS:
+            raise serializers.ValidationError("Upload a PDF, PNG or JPG.")
+        if not check_real_type(upload, extension):
+            raise serializers.ValidationError(
+                "That file is not the type its name claims to be."
+            )
+        return upload
+
+    def create(self, validated_data):
+        upload = validated_data.get("invoice")
+        if upload is not None:
+            validated_data["invoice_name"] = (upload.name or "invoice")[:255]
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        upload = validated_data.get("invoice")
+        if upload is not None:
+            validated_data["invoice_name"] = (upload.name or "invoice")[:255]
+        return super().update(instance, validated_data)
 
 
 class MilestoneSerializer(serializers.ModelSerializer):

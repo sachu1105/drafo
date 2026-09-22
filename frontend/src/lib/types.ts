@@ -55,6 +55,9 @@ export type Material = {
   name: string;
   brand: string;
   photo_url: string | null;
+  /** The bill behind the price, if one was attached. PDF, PNG or JPG. */
+  invoice_url: string | null;
+  invoice_name: string;
   price: string | null;
   unit: string;
   notes: string;

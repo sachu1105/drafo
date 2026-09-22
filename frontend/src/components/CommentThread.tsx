@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { rememberName, rememberedName } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -10,19 +10,38 @@ import type { Comment } from "@/lib/types";
  * Plain text against a revision. Deliberately not pins on a drawing: a note
  * that says "the kitchen window" is worth more than a dot at coordinates
  * nobody can find again on a phone.
+ *
+ * `initial` is the server's list and is treated as the truth on every render.
+ * It used to seed a useState, which reads its argument once and ignores it
+ * forever after -- and on the architect's side this component mounts while
+ * the versions request is still in flight, so that one read was always of an
+ * empty array. Notes were saved, emailed and shown to the client, and never
+ * shown again to the person who wrote them.
+ *
+ * `sent` holds what has been posted from this form since the last time the
+ * parent refetched, and drops out of the merge as soon as the same id arrives
+ * in `initial`.
  */
 export function CommentThread({
   versionId,
   initial,
   mode,
   token,
+  onPosted,
 }: {
   versionId: number;
   initial: Comment[];
   mode: "client" | "architect";
   token?: string;
+  /** Lets the parent refetch, so `initial` catches up with what was sent. */
+  onPosted?: () => void;
 }) {
-  const [comments, setComments] = useState<Comment[]>(initial);
+  const [sent, setSent] = useState<Comment[]>([]);
+  const comments = useMemo(() => {
+    const known = new Set(initial.map((comment) => comment.id));
+    return [...initial, ...sent.filter((comment) => !known.has(comment.id))];
+  }, [initial, sent]);
+
   const [name, setName] = useState(() =>
     mode === "client" ? rememberedName() : "",
   );
@@ -54,8 +73,9 @@ export function CommentThread({
               body: { body: trimmedBody },
             });
       if (mode === "client") rememberName(trimmedName);
-      setComments((current) => [...current, created]);
+      setSent((current) => [...current, created]);
       setBody("");
+      onPosted?.();
     } catch (caught) {
       setError(
         caught instanceof ApiError ? caught.message : "That did not send.",
@@ -66,8 +86,16 @@ export function CommentThread({
   }
 
   return (
-    <section className="rule-top mt-10 pt-5">
+    <section className={mode === "client" ? "rule-top mt-10 pt-5" : ""}>
       <h2 className="eyebrow">Notes</h2>
+
+      {comments.length === 0 ? (
+        <p className="mt-2 text-[0.875rem] text-faint">
+          {mode === "client"
+            ? "No notes yet."
+            : "No notes yet. Anything you write here is emailed to your client."}
+        </p>
+      ) : null}
 
       {comments.length > 0 ? (
         <ol className="mt-4 space-y-5">

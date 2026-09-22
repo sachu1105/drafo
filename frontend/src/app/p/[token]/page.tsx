@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PracticeHeader } from "@/components/PracticeHeader";
 import { DrawingRow } from "@/components/DrawingRow";
 import { Empty, Section } from "@/components/Section";
+import { InvoiceLink } from "@/components/InvoiceLink";
 import { fetchClientData } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { ClientProject, Material, Milestone } from "@/lib/types";
@@ -65,8 +66,12 @@ export default async function ClientPortal({
             ) : null}
           </p>
 
+          {/* A notice, not a pull-quote. The bare left-ruled line this used
+              to be reads as a stray sentence; the one thing the page is
+              asking for should look like it is asking. */}
           {awaiting > 0 ? (
-            <p className="mt-6 border-l-2 border-ink pl-4 text-[0.9375rem] leading-relaxed">
+            <p className="mt-6 flex items-center gap-3 bg-sand px-4 py-3 text-[0.9375rem]">
+              <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-ink" />
               {awaiting === 1
                 ? "One drawing is waiting for your approval."
                 : `${awaiting} drawings are waiting for your approval.`}
@@ -79,7 +84,7 @@ export default async function ClientPortal({
             {project.drawing_sets.length === 0 ? (
               <Empty>Nothing has been shared yet.</Empty>
             ) : (
-              <div>
+              <div className="space-y-3">
                 {project.drawing_sets.map((set) => (
                   <DrawingRow
                     key={set.id}
@@ -95,21 +100,18 @@ export default async function ClientPortal({
           <Payments milestones={project.milestones} />
         </div>
 
-        <footer className="rule-top mt-16 pt-5 text-[0.8125rem] leading-relaxed text-faint">
-          <p>
-            This page is private to you and {project.practice.practice_name}. Anyone
-            with the link can see it, so please keep it to yourself.
+        <footer className="rule-top mt-16 flex flex-wrap items-center justify-between gap-x-8 gap-y-4 pt-5">
+          <p className="text-[0.8125rem] leading-relaxed text-faint">
+            Private to you and {project.practice.practice_name} — please keep the
+            link to yourself.
           </p>
           {project.practice.phone ? (
-            <p className="mt-2">
-              Questions?{" "}
-              <a
-                href={`tel:${project.practice.phone}`}
-                className="text-muted underline decoration-rule"
-              >
-                {project.practice.phone}
-              </a>
-            </p>
+            <a
+              href={`tel:${project.practice.phone}`}
+              className="btn-quiet shrink-0 px-5 py-2.5"
+            >
+              Call {project.practice.practice_name}
+            </a>
           ) : null}
         </footer>
       </main>
@@ -137,10 +139,10 @@ function Materials({ materials }: { materials: Material[] }) {
 
   return (
     <Section label="Materials" count={materials.length}>
-      <div className="space-y-8 pt-2">
+      <div className="space-y-7">
         {[...groups.entries()].map(([category, items]) => (
           <div key={category}>
-            <h3 className="mb-1 text-[0.8125rem] font-medium text-muted">{category}</h3>
+            <h3 className="eyebrow mb-1">{category}</h3>
             <div>
               {items.map((material) => (
                 <div
@@ -166,6 +168,7 @@ function Materials({ materials }: { materials: Material[] }) {
                         {material.notes}
                       </p>
                     ) : null}
+                    <InvoiceLink material={material} />
                   </div>
                   {material.price ? (
                     <div className="shrink-0 text-right">
@@ -202,7 +205,7 @@ function Payments({ milestones }: { milestones: Milestone[] }) {
 
   return (
     <Section label="Payments">
-      <div className="pt-2">
+      <div>
         {milestones.map((milestone) => (
           <div
             key={milestone.id}
@@ -217,17 +220,27 @@ function Payments({ milestones }: { milestones: Milestone[] }) {
                     Paid{milestone.paid_on ? ` ${formatDate(milestone.paid_on)}` : ""}
                   </span>
                 ) : (
-                  "Due"
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      aria-hidden
+                      className="h-1.5 w-1.5 rounded-full border border-muted"
+                    />
+                    Due
+                  </span>
                 )}
               </p>
             </div>
             <p className="shrink-0 tabular-nums">{formatMoney(milestone.amount)}</p>
           </div>
         ))}
+        {/* Set apart and set heavier, because in a column of identically
+            weighted rows a total reads as one more thing that is owed. */}
         {outstanding > 0 ? (
-          <div className="flex items-baseline gap-4 py-3.5">
-            <p className="flex-1 text-[0.8125rem] text-muted">Outstanding</p>
-            <p className="shrink-0 tabular-nums">{formatMoney(outstanding)}</p>
+          <div className="mt-1 flex items-baseline gap-4 border-t-2 border-ink pt-3.5">
+            <p className="flex-1 text-[0.9375rem] font-medium">Outstanding</p>
+            <p className="shrink-0 text-[1.125rem] font-medium tabular-nums">
+              {formatMoney(outstanding)}
+            </p>
           </div>
         ) : null}
       </div>

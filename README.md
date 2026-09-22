@@ -275,6 +275,20 @@ judge features.
   state and nothing else.
 - The drawings are the only things on screen with visual weight.
 - Animation is opacity and a 4px translate, under 200ms. Nothing bounces.
+- **A material can carry its invoice.** `photo` is what the tile looks like,
+  `invoice` is what was paid for it — a PDF an ImageField will not take, and
+  the one a client is actually looking for a year later. Served through the
+  same token-checked view as everything else, so the bill is no more public
+  than the drawings.
+- **Notes are announced where they can be seen.** A note lives against a
+  revision, on the drawing page. The client's overview shows the count on the
+  row, because otherwise the architect writes one, the client never opens that
+  drawing, and it is never read.
+- **The client's page shows the drawing.** A page about drawings whose rows
+  are filenames and a chevron is a list of filenames. Each row carries the
+  generated preview and a visible `Review & approve`, because the one thing
+  the whole product asks anyone to do was previously a text link with no
+  affordance, read on a phone by someone who was sent it on WhatsApp.
 - **One offer per screen.** A tab shows its "Add" button *or* an empty state
   with one button in it, never both; the project header hides "Share with
   client" while you are on the Share tab. Every place the product offered the

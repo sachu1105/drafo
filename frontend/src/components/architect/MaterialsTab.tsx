@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FileField } from "@/components/architect/FileField";
+import { InvoiceLink } from "@/components/InvoiceLink";
 import {
   Empty,
   FormActions,
@@ -10,7 +11,7 @@ import {
   Labelled,
   MoneyInput,
 } from "@/components/architect/Form";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import type { Material, MaterialCategory } from "@/lib/types";
 
@@ -147,6 +148,7 @@ export function MaterialsTab({
                             {material.notes}
                           </p>
                         ) : null}
+                        <InvoiceLink material={material} />
                       </div>
 
                       {material.price ? (
@@ -193,7 +195,9 @@ function AddMaterialForm({
 }) {
   const [form, setForm] = useState(BLANK);
   const [photo, setPhoto] = useState<File | null>(null);
+  const [invoice, setInvoice] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -206,8 +210,10 @@ function AddMaterialForm({
       if (form[field].trim()) payload.append(field, form[field].trim());
     }
     if (photo) payload.append("photo", photo);
+    if (invoice) payload.append("invoice", invoice);
 
     setBusy(true);
+    setError(null);
     try {
       await api<Material>(`/projects/${projectId}/materials/`, {
         method: "POST",
@@ -215,7 +221,12 @@ function AddMaterialForm({
       });
       setForm(BLANK);
       setPhoto(null);
+      setInvoice(null);
       onDone();
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError ? caught.message : "Could not add that.",
+      );
     } finally {
       setBusy(false);
     }
@@ -288,7 +299,7 @@ function AddMaterialForm({
           />
         </Labelled>
 
-        <Labelled label="Photo" span={12}>
+        <Labelled label="Photo" span={6}>
           <FileField
             file={photo}
             onFile={setPhoto}
@@ -297,7 +308,23 @@ function AddMaterialForm({
             disabled={busy}
           />
         </Labelled>
+
+        <Labelled label="Invoice" span={6}>
+          <FileField
+            file={invoice}
+            onFile={setInvoice}
+            accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+            hint="PDF, PNG or JPG, optional — your client can open it"
+            disabled={busy}
+          />
+        </Labelled>
       </FormGrid>
+
+      {error ? (
+        <p role="alert" className="mt-4 text-[0.875rem] text-ink">
+          {error}
+        </p>
+      ) : null}
 
       <FormActions
         submitLabel="Add material"

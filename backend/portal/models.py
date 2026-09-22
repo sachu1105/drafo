@@ -329,6 +329,14 @@ class Material(models.Model):
     photo = models.ImageField(
         upload_to="materials/%Y/%m/", storage=media_storage, null=True, blank=True
     )
+    # The paperwork behind the price. Separate from the photo because they
+    # answer different questions: the photo is what the tile looks like, the
+    # invoice is what was actually paid for it, and a year later the second
+    # one is the one being looked for.
+    invoice = models.FileField(
+        upload_to="invoices/%Y/%m/", storage=media_storage, null=True, blank=True
+    )
+    invoice_name = models.CharField(max_length=255, blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     unit = models.CharField(max_length=40, blank=True)
     notes = models.TextField(blank=True)

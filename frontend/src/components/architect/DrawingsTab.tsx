@@ -304,13 +304,16 @@ function DrawingSetCard({
           ) : null}
 
           {current ? (
-            <div className="border-t border-ruleSoft px-5 pb-5">
+            /* No rule of its own: the wrapper already draws one, and the two
+               together were a hairline and then a second, inset hairline. */
+            <div className="border-t border-ruleSoft px-5 py-5">
               <CommentThread
                 mode="architect"
                 versionId={current.id}
                 initial={
                   versions?.find((version) => version.id === current.id)?.comments ?? []
                 }
+                onPosted={loadVersions}
               />
             </div>
           ) : null}
