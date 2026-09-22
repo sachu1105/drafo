@@ -18,8 +18,9 @@ import { useEffect, useRef, useState } from "react";
 const GROUPS = [
   {
     label: "The record",
+    tint: "bg-swatchWood",
     icon: FileCheck2,
-    image: "/rivison.png" as string | null,
+    image: "/rivision2.png" as string | null,
     imageAlt:
       "A drawing set with revisions 1 to 3 stacked, an approvals list giving "
       + "the date and time each revision was approved, a note, and a client "
@@ -41,6 +42,7 @@ const GROUPS = [
   },
   {
     label: "The project",
+    tint: "bg-swatchStone",
     icon: FolderOpen,
     /** Drop a file in /public and name it here, as "The record" does. */
     image: "/drawing.png" as string | null,
@@ -62,6 +64,7 @@ const GROUPS = [
   },
   {
     label: "The link",
+    tint: "bg-swatchSage",
     icon: Link2,
     image: "/link.png" as string | null,
     imageAlt: "",
@@ -137,7 +140,7 @@ export function FeatureAccordion() {
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
-      className="grid items-start gap-10 lg:grid-cols-2 lg:gap-16"
+      className="grid items-start gap-10 lg:grid-cols-[1.35fr_1fr] lg:gap-12"
     >
       <FeatureVisual group={active} />
 
@@ -250,7 +253,7 @@ function FeatureVisual({ group }: { group: (typeof GROUPS)[number] }) {
   return (
     <div
       data-feature-visual
-      className="relative aspect-[3/2] overflow-hidden border border-rule bg-card"
+      className={`relative aspect-[7/5] overflow-hidden transition-colors duration-300 ${group.tint}`}
     >
       {group.image ? (
         <Image

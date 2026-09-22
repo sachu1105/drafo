@@ -43,6 +43,14 @@ const config: Config = {
         rule: "#CBD1C0",
         ruleSoft: "#E2E3D3",
 
+        // --- material swatches ---
+        // Lifted pixel-for-pixel from the sample board in the hero drawing:
+        // wood, stone and a sage laminate. They ground the three feature
+        // panels, so each drawing sits on a material rather than on paper.
+        swatchWood: "#E4C1A0",
+        swatchStone: "#E8E2DC",
+        swatchSage: "#859388",
+
         // --- state ---
         accent: "#3F544C", // approved, 7.3:1
         accentSoft: "#E4E9E2",
