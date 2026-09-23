@@ -24,10 +24,8 @@ export function DrawingRow({ set, href }: { set: DrawingSet; href: string }) {
   return (
     <Link
       href={href}
-      className={`group flex items-center gap-4 border bg-card p-3 transition-colors
-                  duration-150 hover:border-brand sm:gap-5 sm:p-4 ${
-                    awaiting ? "border-ink" : "border-rule"
-                  }`}
+      className={`card-link group flex items-center gap-4 border bg-card p-3
+                  sm:gap-5 sm:p-4 ${awaiting ? "border-ink" : "border-rule"}`}
     >
       <Thumbnail url={version?.preview_url ?? null} />
 

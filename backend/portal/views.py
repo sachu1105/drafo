@@ -14,12 +14,15 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.db.models import Prefetch
 from django.http import Http404, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -94,11 +97,46 @@ class CsrfView(APIView):
         return Response({"csrfToken": get_token(request)})
 
 
-class RegisterView(APIView):
-    """Ask for an account. Nobody gets in until a superuser says so.
+# --------------------------------------------------------------------------
+# email verification -- a signed token, no table
+# --------------------------------------------------------------------------
+# The link has to survive a round trip through an inbox and come back
+# self-describing. A signed string does that without a rows-of-tokens table to
+# create, index and sweep. The address is signed in alongside the id, so a
+# token stops working the moment the address it was issued for changes.
 
-    The response is deliberately the same shape whether or not approval is
-    instant, so the frontend has one path to render.
+EMAIL_TOKEN_SALT = "portal.email-verification"
+EMAIL_TOKEN_MAX_AGE = 60 * 60 * 24  # a day is long enough to find the mail
+
+
+def make_email_token(architect) -> str:
+    return TimestampSigner(salt=EMAIL_TOKEN_SALT).sign(
+        f"{architect.pk}:{architect.email}"
+    )
+
+
+def read_email_token(token: str) -> Architect | None:
+    """The account the token names, or None if it is stale, forged or spent."""
+    try:
+        raw = TimestampSigner(salt=EMAIL_TOKEN_SALT).unsign(
+            token, max_age=EMAIL_TOKEN_MAX_AGE
+        )
+        pk, _, email = raw.partition(":")
+        return Architect.objects.get(pk=int(pk), email__iexact=email, is_active=True)
+    except (BadSignature, SignatureExpired, Architect.DoesNotExist, ValueError):
+        return None
+
+
+class RegisterView(APIView):
+    """Create an account and use it, in one step.
+
+    There is no approval queue and no verification wall. Somebody who has just
+    typed their practice name wants to see the thing working, and every screen
+    between them and that is a place to leave. The account they get is real but
+    empty: it owns no projects and can read nothing but its own.
+
+    The session is opened here, so the response is the same shape as /auth/me/
+    and the frontend can go straight to the projects screen.
     """
 
     permission_classes = [AllowAny]
@@ -110,15 +148,10 @@ class RegisterView(APIView):
         form = RegistrationSerializer(data=request.data)
         form.is_valid(raise_exception=True)
         architect = form.save()
-        emails.notify_admins_of_registration(architect)
+        login(request, architect)
+        emails.welcome(architect)
         return Response(
-            {
-                "detail": (
-                    "Your account has been created and is waiting for approval. "
-                    "You will be able to sign in once it is activated."
-                ),
-                "pending": True,
-            },
+            ArchitectSerializer(architect, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -131,28 +164,16 @@ class LoginView(APIView):
     def post(self, request):
         form = LoginSerializer(data=request.data)
         form.is_valid(raise_exception=True)
-        email = form.validated_data["email"]
-        password = form.validated_data["password"]
 
-        user = authenticate(request, username=email, password=password)
+        user = authenticate(
+            request,
+            username=form.validated_data["email"],
+            password=form.validated_data["password"],
+        )
         if user is None:
-            # `authenticate` refuses inactive accounts without saying why, which
-            # leaves someone awaiting approval staring at "wrong password".
-            # Only tell them if they already proved they know the password.
-            pending = Architect.objects.filter(
-                email__iexact=email, is_active=False
-            ).first()
-            if pending is not None and pending.check_password(password):
-                return Response(
-                    {
-                        "detail": (
-                            "Your account is waiting for approval. "
-                            "You will be able to sign in once it is activated."
-                        ),
-                        "pending": True,
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+            # Deliberately one message for both "no such account" and "wrong
+            # password": the login form must not be a way to find out who has
+            # an account here. A suspended account lands here too.
             return Response(
                 {"detail": "Those details do not match an account."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -160,6 +181,56 @@ class LoginView(APIView):
 
         login(request, user)
         return Response(ArchitectSerializer(user, context={"request": request}).data)
+
+
+class SendEmailVerificationView(APIView):
+    """Email the signed-in architect a link that proves their address.
+
+    Nothing in the product is gated on the result. This exists because every
+    notification -- a client approval, a comment -- goes to this address, and
+    an address with a typo in it fails silently forever.
+    """
+
+    throttle_scope = "verify_email"
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request):
+        architect = request.user
+        if architect.email_verified:
+            return Response({"detail": "That address is already confirmed."})
+        token = make_email_token(architect)
+        emails.send_email_verification(
+            architect, f"{settings.PUBLIC_BASE_URL}/verify-email?token={token}"
+        )
+        return Response({"detail": f"Sent. Check {architect.email}."})
+
+
+class ConfirmEmailVerificationView(APIView):
+    """Spend the token from the email.
+
+    Open to anyone holding a valid token, on purpose: the link is opened in
+    whatever browser the mail app happens to use, which is usually not the one
+    holding the session. The token is signed and carries the account, so it
+    authenticates itself.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "verify_email"
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request):
+        architect = read_email_token(request.data.get("token") or "")
+        if architect is None:
+            return Response(
+                {"detail": "That link has expired or is not valid. Send a new one."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not architect.email_verified:
+            architect.email_verified_at = timezone.now()
+            architect.save(update_fields=["email_verified_at"])
+        return Response({"detail": "Your email address is confirmed.", "email": architect.email})
+
 
 
 class LogoutView(APIView):

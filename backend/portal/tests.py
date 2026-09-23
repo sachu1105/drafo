@@ -11,9 +11,13 @@ from __future__ import annotations
 import io
 import shutil
 import tempfile
+from datetime import timedelta
+from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from django.test.client import BOUNDARY, MULTIPART_CONTENT, encode_multipart
 from django.test import TestCase, override_settings
 
@@ -407,7 +411,7 @@ class UploadTests(MediaSandbox):
 
 
 class RegistrationTests(MediaSandbox):
-    """Self-registration is a request for access, not a door."""
+    """Signing up is a door, not a request. It opens straight away."""
 
     URL = "/api/auth/register/"
 
@@ -415,21 +419,36 @@ class RegistrationTests(MediaSandbox):
         data = {
             "email": "new@studio.example",
             "practice_name": "New Studio",
-            "phone": "+91 98470 33333",
             "password": "a-long-enough-password",
         }
         data.update(overrides)
         return data
 
-    def test_registration_creates_an_inactive_account(self):
+    def test_registration_creates_a_live_account(self):
         response = self.client.post(
             self.URL, data=self.payload(), content_type="application/json"
         )
         self.assertEqual(response.status_code, 201, response.content)
-        self.assertTrue(response.json()["pending"])
+        self.assertEqual(response.json()["email"], "new@studio.example")
 
         architect = Architect.objects.get(email="new@studio.example")
-        self.assertFalse(architect.is_active)
+        self.assertTrue(architect.is_active)
+
+    def test_registration_signs_them_in(self):
+        """No second trip through the login form to see their own account."""
+        self.client.post(
+            self.URL, data=self.payload(), content_type="application/json"
+        )
+        response = self.client.get("/api/auth/me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["email"], "new@studio.example")
+
+    def test_a_new_account_is_not_email_verified(self):
+        """Unverified, and none the worse for it: nothing is gated on it."""
+        self.client.post(
+            self.URL, data=self.payload(), content_type="application/json"
+        )
+        self.assertFalse(self.client.get("/api/auth/me/").json()["email_verified"])
 
     def test_a_self_registered_account_is_never_staff(self):
         """The whole risk of a public form: someone signing themselves into
@@ -443,38 +462,11 @@ class RegistrationTests(MediaSandbox):
         self.assertFalse(architect.is_staff)
         self.assertFalse(architect.is_superuser)
 
-    def test_pending_account_cannot_sign_in(self):
+    def test_the_new_account_can_sign_in_again(self):
         self.client.post(
             self.URL, data=self.payload(), content_type="application/json"
         )
-        response = self.client.post(
-            "/api/auth/login/",
-            data={"email": "new@studio.example", "password": "a-long-enough-password"},
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 403)
-        self.assertTrue(response.json()["pending"])
-
-    def test_pending_account_with_wrong_password_learns_nothing(self):
-        self.client.post(
-            self.URL, data=self.payload(), content_type="application/json"
-        )
-        response = self.client.post(
-            "/api/auth/login/",
-            data={"email": "new@studio.example", "password": "not-the-password"},
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertNotIn("pending", response.json())
-
-    def test_account_works_once_approved(self):
-        self.client.post(
-            self.URL, data=self.payload(), content_type="application/json"
-        )
-        architect = Architect.objects.get(email="new@studio.example")
-        architect.is_active = True
-        architect.save(update_fields=["is_active"])
-
+        self.client.logout()
         response = self.client.post(
             "/api/auth/login/",
             data={"email": "new@studio.example", "password": "a-long-enough-password"},
@@ -482,6 +474,21 @@ class RegistrationTests(MediaSandbox):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["is_staff"])
+
+    def test_a_suspended_account_cannot_sign_in(self):
+        """Suspension is the one switch left, and it says nothing extra."""
+        self.client.post(
+            self.URL, data=self.payload(), content_type="application/json"
+        )
+        Architect.objects.filter(email="new@studio.example").update(is_active=False)
+        self.client.logout()
+        response = self.client.post(
+            "/api/auth/login/",
+            data={"email": "new@studio.example", "password": "a-long-enough-password"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("pending", response.json())
 
     def test_duplicate_email_is_rejected(self):
         make_architect("taken@example.com", "Taken")
@@ -514,6 +521,80 @@ class RegistrationTests(MediaSandbox):
         )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(Architect.objects.filter(email="new@studio.example").exists())
+
+
+class EmailVerificationTests(MediaSandbox):
+    """Confirming the address is an offer on the profile screen, never a gate."""
+
+    SEND = "/api/auth/verify-email/send/"
+    CONFIRM = "/api/auth/verify-email/confirm/"
+
+    def setUp(self):
+        super().setUp()
+        self.architect = make_architect("anna@studio.example", "Anna Mathew Architects")
+        self.client.force_login(self.architect)
+
+    def token(self) -> str:
+        self.assertEqual(self.client.post(self.SEND).status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        return body.split("verify-email?token=")[1].split()[0]
+
+    def test_the_link_confirms_the_address(self):
+        token = self.token()
+        self.client.logout()  # the mail app opens it in another browser
+
+        response = self.client.post(
+            self.CONFIRM, data={"token": token}, content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        self.architect.refresh_from_db()
+        self.assertTrue(self.architect.email_verified)
+
+    def test_the_mail_goes_to_the_address_being_confirmed(self):
+        self.token()
+        self.assertEqual(mail.outbox[0].to, ["anna@studio.example"])
+
+    def test_a_forged_token_confirms_nothing(self):
+        response = self.client.post(
+            self.CONFIRM,
+            data={"token": f"{self.architect.pk}:anna@studio.example:not-a-signature"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.architect.refresh_from_db()
+        self.assertFalse(self.architect.email_verified)
+
+    def test_an_expired_token_confirms_nothing(self):
+        token = self.token()
+        later = timezone.now() + timedelta(days=2)
+        with mock.patch("django.core.signing.time.time", return_value=later.timestamp()):
+            response = self.client.post(
+                self.CONFIRM, data={"token": token}, content_type="application/json"
+            )
+        self.assertEqual(response.status_code, 400)
+        self.architect.refresh_from_db()
+        self.assertFalse(self.architect.email_verified)
+
+    def test_sending_needs_a_session(self):
+        self.client.logout()
+        self.assertIn(self.client.post(self.SEND).status_code, (401, 403))
+        self.assertEqual(mail.outbox, [])
+
+    def test_asking_twice_is_harmless(self):
+        self.client.post(
+            self.CONFIRM, data={"token": self.token()}, content_type="application/json"
+        )
+        self.architect.refresh_from_db()
+        first = self.architect.email_verified_at
+
+        response = self.client.post(self.SEND)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)  # nothing new sent
+
+        self.architect.refresh_from_db()
+        self.assertEqual(self.architect.email_verified_at, first)
 
 
 class ProfileTests(MediaSandbox):

@@ -19,9 +19,28 @@ import { MarketingNav } from "@/components/marketing/MarketingNav";
 /**
  * The public page.
  *
- * Written for the person who pays: an architect, engineer or interior designer
- * running projects out of WhatsApp. It sells one thing -- a record of what the
- * client approved and when -- and everything else is supporting cast.
+ * Written for the person who pays: whoever is running projects out of
+ * WhatsApp and sending work to a client for sign-off. It sells one thing --
+ * a record of what the client approved and when -- and everything else is
+ * supporting cast.
+ *
+ * This is a trade product, not a horizontal one: architects, civil and
+ * structural engineers, contractors, interior designers -- the people who
+ * design and build. Saying so is the point. What the visible copy must not do
+ * is say it as a list of job titles, because a list is an exclusion list: it
+ * cannot be finished, and everyone left off it -- the landscape architect,
+ * the MEP consultant, the visualiser, the fitout firm -- reads it and leaves.
+ *
+ * So the sector is named by what it does. "Designs and builds" is every one
+ * of those trades and no client alive, which is the other thing the line has
+ * to do: this page must never read as something to forward to a client.
+ *
+ * It must also not shrink the product to its most quotable feature. Approval
+ * is the sharp end, but a project here carries its drawings, its materials
+ * and its payment milestones, and an eyebrow that says "for sending drawings"
+ * sells a quarter of what was built. The professions survive in the meta
+ * description below, where they are keyword coverage for search and nobody
+ * reads them and feels left out.
  *
  * No invented testimonials, no borrowed client logos, no statistics we cannot
  * stand behind. This audience notices.
@@ -30,9 +49,10 @@ import { MarketingNav } from "@/components/marketing/MarketingNav";
 export const metadata: Metadata = {
   title: "Drafo — the drawing your client approved, on the record",
   description:
-    "A private project portal for architects, engineers and interior designers. "
-    + "Share drawings, capture timestamped approvals, and keep materials and "
-    + "payment milestones in one place. Your client needs no account.",
+    "Run a project with your client in one private place: drawings and "
+    + "revisions, timestamped approvals, materials and payment milestones. "
+    + "Built for architects, civil and structural engineers, contractors and "
+    + "interior designers. Your client needs no account.",
 };
 
 export default function Home() {
@@ -76,7 +96,7 @@ function Hero() {
         <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.15fr] lg:gap-6">
           <div className="animate-rise">
             <p className="eyebrow">
-              For architects, engineers and interior designers
+              For everyone who designs and builds
             </p>
 
             <h1 className="mt-5 font-display text-[2.5rem] leading-[1.08] tracking-tight sm:text-[3.25rem]">
@@ -84,9 +104,10 @@ function Hero() {
             </h1>
 
             <p className="mt-6 max-w-[52ch] text-[1.0625rem] leading-relaxed text-muted">
-              A private page you share with one client, for one project. They
-              open a link, see the current drawing, and tap Approve — and the
-              record cannot be edited, by them, by you, or by us.
+              A private page you share with one client, for one project — the
+              drawings, the materials, the payment milestones. They open a
+              link, see the current drawing, and tap Approve — and the record
+              cannot be edited, by them, by you, or by us.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -98,9 +119,6 @@ function Hero() {
               </Link>
             </div>
 
-            <p className="mt-5 text-[0.875rem] text-faint">
-              No app to install. Your client creates no account, ever.
-            </p>
           </div>
 
           {/* The whole product in one drawing: drawings, materials, payment

@@ -157,12 +157,14 @@ class ArchitectSerializer(serializers.ModelSerializer):
     cover_url = serializers.SerializerMethodField()
     card_url = serializers.SerializerMethodField()
     display_name = serializers.CharField(read_only=True)
+    email_verified = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Architect
         fields = (
             "id",
             "email",
+            "email_verified",
             # the person
             "full_name",
             "profession",
@@ -183,7 +185,14 @@ class ArchitectSerializer(serializers.ModelSerializer):
             "card_is_public",
             "is_staff",
         )
-        read_only_fields = ("id", "email", "is_staff", "card_slug", "display_name")
+        read_only_fields = (
+            "id",
+            "email",
+            "email_verified",
+            "is_staff",
+            "card_slug",
+            "display_name",
+        )
 
     def get_logo_url(self, obj) -> str | None:
         if not obj.logo:
@@ -341,9 +350,14 @@ class ProfileCardSerializer(serializers.ModelSerializer):
 class RegistrationSerializer(serializers.ModelSerializer):
     """Self-registration for a practice.
 
-    The account is created inactive: it exists, but cannot sign in until a
-    superuser approves it. That keeps a public form from becoming an open door
-    while still letting people ask for access without emailing anyone.
+    The account is live the moment it is created. Approval-gated signup does
+    not scale past the first handful of accounts -- somebody has to be awake
+    to let each person in -- and it buys nothing here: a new account is empty,
+    owns no projects, and can reach nothing but its own.
+
+    Only the four fields needed to have an account at all are asked for.
+    Everything else is on the profile screen, where it can be filled in by
+    someone who has already seen what it is for.
     """
 
     password = serializers.CharField(
@@ -352,7 +366,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Architect
-        fields = ("email", "full_name", "practice_name", "phone", "password")
+        fields = ("email", "full_name", "practice_name", "password")
 
     def validate_email(self, value: str) -> str:
         value = value.strip().lower()
@@ -374,11 +388,9 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        return Architect.objects.create_user(
-            password=password,
-            is_active=False,  # pending approval; create_user already denies staff
-            **validated_data,
-        )
+        # create_user already refuses is_staff/is_superuser, which is the only
+        # thing a public form must never be able to grant itself.
+        return Architect.objects.create_user(password=password, **validated_data)
 
 
 class PracticeSerializer(serializers.ModelSerializer):

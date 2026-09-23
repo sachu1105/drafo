@@ -114,6 +114,13 @@ export type Project = {
 export type Architect = {
   id: number;
   email: string;
+  /**
+   * Whether they have clicked the link we emailed them. Nothing is gated on
+   * it -- an unverified account works exactly like a verified one. It is
+   * shown on the profile screen so a typo'd address is findable before a
+   * client approval goes missing.
+   */
+  email_verified: boolean;
 
   // --- the person ---
   full_name: string;

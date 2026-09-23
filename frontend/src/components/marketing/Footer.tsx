@@ -1,5 +1,14 @@
 import Link from "next/link";
 
+/**
+ * There used to be a third column here, headed "Who it is for", listing
+ * Architects / Civil engineers / Interior designers / Small practices. Every
+ * one of the four pointed at the same anchor, so it was not navigation -- it
+ * was a keyword list wearing links, and it told anyone whose title was not on
+ * it that the product was not theirs. Both are reasons to delete it. The
+ * professions still appear in the page's meta description, which is where a
+ * keyword belongs and where nobody reads it and feels left out.
+ */
 const COLUMNS: { heading: string; links: { label: string; href: string }[] }[] = [
   {
     heading: "Product",
@@ -8,15 +17,6 @@ const COLUMNS: { heading: string; links: { label: string; href: string }[] }[] =
       { label: "How it works", href: "/#how" },
       { label: "Features", href: "/#features" },
       { label: "For your client", href: "/#client" },
-    ],
-  },
-  {
-    heading: "Who it is for",
-    links: [
-      { label: "Architects", href: "/#features" },
-      { label: "Civil engineers", href: "/#features" },
-      { label: "Interior designers", href: "/#features" },
-      { label: "Small practices", href: "/#features" },
     ],
   },
   {
@@ -45,7 +45,7 @@ export function Footer() {
   return (
     <footer className="bg-brandDark text-paper">
       <div className="mx-auto max-w-shell px-4 py-14 sm:px-8">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <p className="font-display text-[1.375rem] leading-none tracking-tight">
               Drafo

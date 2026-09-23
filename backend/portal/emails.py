@@ -1,9 +1,8 @@
 """
-Two emails, both plain text.
+Every email this product sends, all plain text.
 
-One tells the client a new drawing is waiting. One tells the architect it was
-approved. Neither is allowed to fail loudly: a mail server outage must never
-lose an upload or an approval.
+None of them is allowed to fail loudly: a mail server outage must never lose
+an upload, an approval or a sign-up.
 """
 
 from __future__ import annotations
@@ -31,46 +30,33 @@ def _send(subject: str, body: str, to: str) -> None:
         logger.exception("Notification email failed (subject=%s)", subject)
 
 
-def notify_admins_of_registration(architect) -> None:
-    """Tell the superusers that someone is waiting at the door.
+def send_email_verification(architect, link: str) -> None:
+    """Send the link that proves the address is real.
 
-    Without this, approval-gated signup quietly becomes a black hole: the
-    account exists, nobody knows, and the person never hears back.
+    Sent only when the architect asks for it from their profile. Nothing is
+    blocked until they do, so this mail is an offer, not a gate.
     """
-    from .models import Architect
-
-    recipients = list(
-        Architect.objects.filter(is_superuser=True, is_active=True)
-        .exclude(email="")
-        .values_list("email", flat=True)
-    )
-    if not recipients:
-        logger.warning(
-            "New registration from %s but no active superuser to notify",
-            architect.email,
-        )
-        return
-
-    subject = f"Account request: {architect.practice_name}"
-    body = (
-        f"{architect.practice_name} has asked for an account.\n\n"
-        f"Email: {architect.email}\n"
-        f"Phone: {architect.phone or '-'}\n\n"
-        "The account is inactive until you approve it. Open the admin, go to "
-        "Architects, select them and run 'Approve selected accounts'.\n"
-    )
-    for recipient in recipients:
-        _send(subject, body, recipient)
-
-
-def notify_architect_of_approval_of_account(architect) -> None:
-    """Tell someone their account is live. Sent when a superuser approves."""
     _send(
-        "Your account is ready",
+        "Confirm your email address",
         (
-            f"Hello {architect.practice_name},\n\n"
-            "Your account has been approved. You can sign in now:\n"
-            f"{settings.PUBLIC_BASE_URL}/login\n"
+            f"Hello {architect.display_name},\n\n"
+            "Confirm this is your address so we can reach you about your "
+            f"projects:\n{link}\n\n"
+            "The link works for 24 hours. If you did not ask for this, "
+            "ignore it -- nothing changes.\n"
+        ),
+        architect.email,
+    )
+
+
+def welcome(architect) -> None:
+    """First thing they get. Proves the address works and where to sign in."""
+    _send(
+        "Welcome to Drafo",
+        (
+            f"Hello {architect.display_name},\n\n"
+            "Your account is ready. You are already signed in; you can come "
+            f"back any time at:\n{settings.PUBLIC_BASE_URL}/login\n"
         ),
         architect.email,
     )

@@ -109,70 +109,32 @@ export function MaterialsTab({
             />
           ) : null
         ) : (
-          <div className="space-y-8">
-            {[...groups.entries()].map(([category, items]) => (
+          /* One list, not three floating slabs. The categories are
+             subheadings inside it rather than captions above separate cards,
+             so a project's selections read as one inventory -- which is what
+             somebody is scanning a year later.
+
+             No frame and no filled bands: a box around a list that already
+             runs the width of the page only draws a second edge just inside
+             the first, and the rows are what matter. The hairlines stay --
+             they are what lets the eye track a name across to its price --
+             but everything else comes off, and the rows start at the page's
+             own margin rather than inset from a border. */
+          <div>
+            {[...groups.entries()].map(([category, items], index) => (
               <section key={category}>
-                <h3 className="eyebrow">{category}</h3>
-                <ul className="mt-3 space-y-px bg-rule">
+                <h3
+                  className={`eyebrow ${index > 0 ? "mt-10" : ""} pb-2`}
+                >
+                  {category}
+                </h3>
+                <ul>
                   {items.map((material) => (
-                    <li
+                    <MaterialRow
                       key={material.id}
-                      className="flex items-start gap-4 bg-card px-4 py-3.5"
-                    >
-                      {material.photo_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={material.photo_url}
-                          alt=""
-                          loading="lazy"
-                          className="h-14 w-14 shrink-0 border border-ruleSoft object-cover"
-                        />
-                      ) : (
-                        <div
-                          aria-hidden
-                          className="h-14 w-14 shrink-0 border border-dashed border-rule"
-                        />
-                      )}
-
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[0.9375rem] leading-snug">
-                          {material.name}
-                        </p>
-                        {material.brand ? (
-                          <p className="text-[0.8125rem] text-muted">
-                            {material.brand}
-                          </p>
-                        ) : null}
-                        {material.notes ? (
-                          <p className="mt-1 text-[0.8125rem] leading-relaxed text-faint">
-                            {material.notes}
-                          </p>
-                        ) : null}
-                        <InvoiceLink material={material} />
-                      </div>
-
-                      {material.price ? (
-                        <div className="shrink-0 text-right">
-                          <p className="text-[0.9375rem] tabular-nums">
-                            {formatMoney(material.price)}
-                          </p>
-                          {material.unit ? (
-                            <p className="text-[0.75rem] text-faint">
-                              {material.unit}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() => remove(material)}
-                        className="shrink-0 self-start text-[0.8125rem] text-faint
-                                   hover:text-ink"
-                      >
-                        Remove
-                      </button>
-                    </li>
+                      material={material}
+                      onRemove={() => remove(material)}
+                    />
                   ))}
                 </ul>
               </section>
@@ -181,6 +143,136 @@ export function MaterialsTab({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * One selection.
+ *
+ * Two lines at most: what it is, then everything else about it joined on one
+ * muted line. The price sits in a column of fixed width so that a column of
+ * them lines up on the rupee sign instead of ending wherever the name did.
+ */
+function MaterialRow({
+  material,
+  onRemove,
+}: {
+  material: Material;
+  onRemove: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const meta = [material.brand, material.notes].filter(Boolean).join(" · ");
+
+  if (confirming) {
+    return (
+      <li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-ruleSoft py-3.5">
+        <p className="min-w-0 flex-1 text-[0.875rem]">
+          Remove <span className="font-medium">{material.name}</span>?
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onRemove}
+            className="min-h-[36px] border border-ink px-3 text-[0.8125rem]"
+          >
+            Remove
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="min-h-[36px] px-2 text-[0.8125rem] text-muted hover:text-ink"
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="group flex items-start gap-4 border-t border-ruleSoft py-3.5 sm:items-center">
+      <Thumbnail url={material.photo_url} />
+
+      <div className="min-w-0 flex-1">
+        {/* Wraps rather than truncates. At 390px a fixed price column beside
+            it left about a hundred pixels for the name, and every row came
+            out as "Modular swi…". */}
+        <p className="break-words text-[0.9375rem] leading-snug">{material.name}</p>
+        {meta || material.invoice_url ? (
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[0.8125rem] text-muted">
+            {/* No middot between these two: the line wraps, and a separator
+                that ends up alone at the end of a line is litter. The gap and
+                the document icon are separation enough. */}
+            {meta ? <span>{meta}</span> : null}
+            <InvoiceLink material={material} />
+          </p>
+        ) : null}
+
+        {/* On a phone the price goes under the name, where the name can have
+            the whole width. From sm up it is a column of its own. */}
+        {material.price ? (
+          <p className="mt-1 text-[0.875rem] tabular-nums sm:hidden">
+            {formatMoney(material.price)}
+            {material.unit ? (
+              <span className="text-[0.75rem] text-faint"> {material.unit}</span>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="hidden w-28 shrink-0 text-right sm:block">
+        {material.price ? (
+          <>
+            <p className="text-[0.9375rem] tabular-nums">
+              {formatMoney(material.price)}
+            </p>
+            {material.unit ? (
+              <p className="text-[0.75rem] text-faint">{material.unit}</p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+      {/* Quiet but always there. Hover-only would hide it on every phone,
+          and a one-tap delete of something the client can see should ask. */}
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        aria-label={`Remove ${material.name}`}
+        className="flex h-9 w-9 shrink-0 items-center justify-center text-faint
+                   transition-colors duration-150 hover:bg-paper hover:text-ink"
+      >
+        <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5">
+          <path
+            d="M3.5 3.5l9 9M12.5 3.5l-9 9"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+    </li>
+  );
+}
+
+/** The material, small. A filled frame rather than a dashed empty one. */
+function Thumbnail({ url }: { url: string | null }) {
+  if (!url) {
+    return (
+      <span
+        aria-hidden
+        className="h-12 w-12 shrink-0 border border-ruleSoft bg-sand"
+      />
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      className="h-12 w-12 shrink-0 border border-ruleSoft object-cover"
+    />
   );
 }
 

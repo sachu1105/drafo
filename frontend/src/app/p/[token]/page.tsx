@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { PracticeHeader } from "@/components/PracticeHeader";
 import { DrawingRow } from "@/components/DrawingRow";
 import { Empty, Section } from "@/components/Section";
-import { InvoiceLink } from "@/components/InvoiceLink";
+import { MaterialList } from "@/components/MaterialList";
 import { fetchClientData } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { ClientProject, Material, Milestone } from "@/lib/types";
@@ -128,64 +128,9 @@ function Materials({ materials }: { materials: Material[] }) {
     );
   }
 
-  // Grouped so that a year of decisions is findable in one glance -- which is
-  // the whole reason this section exists.
-  const groups = new Map<string, Material[]>();
-  for (const material of materials) {
-    const list = groups.get(material.category_label) ?? [];
-    list.push(material);
-    groups.set(material.category_label, list);
-  }
-
   return (
     <Section label="Materials" count={materials.length}>
-      <div className="space-y-7">
-        {[...groups.entries()].map(([category, items]) => (
-          <div key={category}>
-            <h3 className="eyebrow mb-1">{category}</h3>
-            <div>
-              {items.map((material) => (
-                <div
-                  key={material.id}
-                  className="flex items-start gap-4 border-b border-ruleSoft py-3.5"
-                >
-                  {material.photo_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={material.photo_url}
-                      alt=""
-                      loading="lazy"
-                      className="h-14 w-14 shrink-0 object-cover"
-                    />
-                  ) : null}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[0.9375rem] leading-snug">{material.name}</p>
-                    {material.brand ? (
-                      <p className="text-[0.8125rem] text-muted">{material.brand}</p>
-                    ) : null}
-                    {material.notes ? (
-                      <p className="mt-1 text-[0.8125rem] leading-relaxed text-faint">
-                        {material.notes}
-                      </p>
-                    ) : null}
-                    <InvoiceLink material={material} />
-                  </div>
-                  {material.price ? (
-                    <div className="shrink-0 text-right">
-                      <p className="text-[0.9375rem] tabular-nums">
-                        {formatMoney(material.price)}
-                      </p>
-                      {material.unit ? (
-                        <p className="text-[0.75rem] text-faint">{material.unit}</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      <MaterialList materials={materials} />
     </Section>
   );
 }

@@ -75,8 +75,13 @@ const config: Config = {
         DEFAULT: "170ms",
       },
       boxShadow: {
-        // One shadow, barely there. Never stack them.
+        // Two, and never stacked on one element. They are different jobs:
+        // `menu` is a surface that has left the page -- a dropdown, a popover.
+        // `lift` is a card that is still on the page and has merely been
+        // pointed at, so it is about half the strength; any more and a hover
+        // reads as something that has opened.
         menu: "0 1px 2px rgba(30,42,38,0.05), 0 8px 24px rgba(30,42,38,0.12)",
+        lift: "0 1px 2px rgba(30,42,38,0.04), 0 4px 10px rgba(30,42,38,0.07)",
       },
       keyframes: {
         rise: {

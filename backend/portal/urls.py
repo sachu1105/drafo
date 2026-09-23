@@ -21,6 +21,16 @@ urlpatterns = [
     path("auth/login/", views.LoginView.as_view(), name="login"),
     path("auth/logout/", views.LogoutView.as_view(), name="logout"),
     path("auth/me/", views.MeView.as_view(), name="me"),
+    path(
+        "auth/verify-email/send/",
+        views.SendEmailVerificationView.as_view(),
+        name="verify-email-send",
+    ),
+    path(
+        "auth/verify-email/confirm/",
+        views.ConfirmEmailVerificationView.as_view(),
+        name="verify-email-confirm",
+    ),
     # --- architect: projects ---
     path("projects/", views.ProjectListCreateView.as_view(), name="project-list"),
     path(

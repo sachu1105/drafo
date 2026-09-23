@@ -154,6 +154,9 @@ REST_FRAMEWORK = {
         # write to are rate limited. Nothing else is.
         "login": "20/hour",
         "register": "10/hour",
+        # Each one sends a real email to a real inbox. Generous enough to
+        # cover "it did not arrive", tight enough not to be a mail cannon.
+        "verify_email": "10/hour",
         "client_write": "60/hour",
     },
 }

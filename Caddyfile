@@ -9,16 +9,11 @@
 {$BACKEND_HOST} {
 	encode zstd gzip
 
-	# Drawings are streamed through the API rather than served as files, so a
-	# large upload and a large download both pass through here.
 	request_body {
 		max_size 32MB
 	}
 
 	reverse_proxy backend:8000 {
-		# Django builds absolute URLs and decides whether the connection is
-		# secure from these. Without them it sees plain HTTP from Caddy and
-		# will redirect HTTPS requests back to HTTP, which loops.
 		header_up X-Forwarded-Proto {scheme}
 		header_up X-Forwarded-Host {host}
 		header_up Host {host}

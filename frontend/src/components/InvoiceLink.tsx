@@ -14,9 +14,9 @@ export function InvoiceLink({ material }: { material: Material }) {
       href={material.invoice_url}
       target="_blank"
       rel="noopener noreferrer"
-      className="mt-1.5 inline-flex min-h-[32px] items-center gap-1.5
-                 text-[0.8125rem] text-muted underline decoration-rule
-                 underline-offset-4 hover:text-ink"
+      className="inline-flex min-h-[32px] items-center gap-1.5 text-[0.8125rem]
+                 text-muted underline decoration-rule underline-offset-4
+                 hover:text-ink"
     >
       <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0">
         <path

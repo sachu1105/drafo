@@ -27,7 +27,14 @@ services:
     ports:
       - "8000:8000"
 
+  # Not started by `docker compose up`: the frontend is run on the host with
+  # `npm run dev`, where the file watcher is not going through a bind mount
+  # and a refresh is instant. Kept here, behind a profile, because the build
+  # still has to work -- `docker compose --profile frontend up` brings it
+  # back. Nothing needs configuring for the host copy: next.config.ts already
+  # falls back to http://localhost:8000, which is where backend publishes.
   frontend:
+    profiles: ["frontend"]
     build: ./frontend
     command: npm run dev
     volumes:

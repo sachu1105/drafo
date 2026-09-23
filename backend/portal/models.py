@@ -116,6 +116,14 @@ class Architect(AbstractUser):
     card_slug = models.SlugField(max_length=40, unique=True, null=True, blank=True)
     card_is_public = models.BooleanField(default=False)
 
+    # Set the moment they click the link we email them. Nothing in the
+    # product is gated on it: an unverified account works exactly like a
+    # verified one. It exists so that a typo'd address is discoverable
+    # before it matters -- every notification this product sends goes to
+    # this address, and an architect who never receives one has no way of
+    # knowing the address was wrong.
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = "email"
@@ -130,6 +138,10 @@ class Architect(AbstractUser):
 
     def __str__(self) -> str:
         return self.practice_name or self.email
+
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
 
     @property
     def display_name(self) -> str:

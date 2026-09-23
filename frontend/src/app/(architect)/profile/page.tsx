@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ProfileCard } from "@/components/ProfileCard";
 import { ImagePicker } from "@/components/architect/ImagePicker";
 import { ApiError } from "@/lib/api";
-import { me, updateProfile } from "@/lib/auth";
+import { me, sendEmailVerification, updateProfile } from "@/lib/auth";
 import type { Architect, ProfileCard as Card } from "@/lib/types";
 
 /**
@@ -108,6 +108,10 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loadFailed, setLoadFailed] = useState(false);
+  const [verify, setVerify] = useState<"idle" | "sending" | "sent" | "failed">(
+    "idle",
+  );
+  const [verifyNote, setVerifyNote] = useState("");
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -125,6 +129,22 @@ export default function ProfilePage() {
     },
     [],
   );
+
+  async function askForVerification() {
+    setVerify("sending");
+    try {
+      const result = await sendEmailVerification();
+      setVerify("sent");
+      setVerifyNote(result.detail);
+    } catch (caught) {
+      setVerify("failed");
+      setVerifyNote(
+        caught instanceof ApiError
+          ? caught.message
+          : "Could not send it. Try again in a minute.",
+      );
+    }
+  }
 
   const dirty = useMemo(() => {
     if (!architect || !draft) return false;
@@ -377,12 +397,49 @@ export default function ProfilePage() {
                 maxLength={200}
               />
 
+              {/* Email is the sign-in and is not editable, so it is read
+                  out rather than offered as a field. Confirming it is the
+                  one thing that can be done to it here: nothing in the
+                  product is gated on the answer, but every notification we
+                  send goes to this address, and an address with a typo in
+                  it fails silently forever. */}
               <div>
                 <span className="eyebrow block">Email</span>
                 <p className="mt-2 text-[0.9375rem]">{architect.email}</p>
-                <p className="mt-1 text-[0.8125rem] leading-relaxed text-faint">
-                  Your sign-in. Not editable here.
-                </p>
+                {architect.email_verified ? (
+                  <p className="mt-1 text-[0.8125rem] leading-relaxed text-faint">
+                    Confirmed. Your sign-in, and not editable here.
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-1 text-[0.8125rem] leading-relaxed text-faint">
+                      Your sign-in. Not confirmed yet — confirm it so you do
+                      not miss a client approval.
+                    </p>
+                    {/* type="button": this sits inside the profile form and
+                        must never save it. */}
+                    <button
+                      type="button"
+                      onClick={askForVerification}
+                      disabled={verify === "sending" || verify === "sent"}
+                      className="btn-quiet mt-3"
+                    >
+                      {verify === "sending"
+                        ? "Sending…"
+                        : verify === "sent"
+                          ? "Link sent"
+                          : "Send confirmation link"}
+                    </button>
+                    {verifyNote ? (
+                      <p
+                        role="status"
+                        className="mt-2 text-[0.8125rem] leading-relaxed text-muted"
+                      >
+                        {verifyNote}
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </div>
             </div>
           </Panel>

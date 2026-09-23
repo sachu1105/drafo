@@ -148,30 +148,37 @@ export default function ProjectPage({
         </div>
       </header>
 
-      {/* --- tabs -------------------------------------------------------- */}
-      <nav className="mt-8 flex gap-7 overflow-x-auto border-b border-rule">
-        {TABS.map((name) => (
-          <button
-            key={name}
-            type="button"
-            onClick={() => setTab(name)}
-            aria-current={tab === name ? "page" : undefined}
-            className={`-mb-px flex min-h-[44px] shrink-0 items-center gap-1.5
-                        border-b-2 text-[0.9375rem] transition-colors duration-150 ${
-                          tab === name
-                            ? "border-brand text-ink"
-                            : "border-transparent text-muted hover:text-ink"
-                        }`}
-          >
-            {name}
-            {counts[name] > 0 ? (
-              <span className="text-[0.75rem] tabular-nums text-faint">
-                {counts[name]}
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </nav>
+      {/* --- tabs --------------------------------------------------------
+          The rule lives on the wrapper and the negative margin on the strip,
+          not on the buttons. Setting overflow-x makes the browser compute
+          overflow-y to `auto` as well, so a button hanging one pixel below
+          the strip -- which is exactly what -mb-px on a button does -- was
+          enough to earn a vertical scrollbar next to four tabs. */}
+      <div className="mt-8 border-b border-rule">
+        <nav className="-mb-px flex gap-7 overflow-x-auto">
+          {TABS.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setTab(name)}
+              aria-current={tab === name ? "page" : undefined}
+              className={`flex min-h-[44px] shrink-0 items-center gap-1.5 border-b-2
+                          text-[0.9375rem] transition-colors duration-150 ${
+                            tab === name
+                              ? "border-brand text-ink"
+                              : "border-transparent text-muted hover:text-ink"
+                          }`}
+            >
+              {name}
+              {counts[name] > 0 ? (
+                <span className="text-[0.75rem] tabular-nums text-faint">
+                  {counts[name]}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       <div className="pt-9">
         {tab === "Drawings" ? (

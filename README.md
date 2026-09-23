@@ -33,17 +33,31 @@ codebase may ever ask a client to create an account.
 
 ## Running it
 
+Compose runs Postgres and Django. The frontend is run on the host, because a
+Next dev server watching files across a bind mount is slower to reload for no
+benefit.
+
 ```bash
 cp .env.example .env
-docker compose up
+docker compose up                                         # db + backend
 docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py createsuperuser
+
+cd frontend && npm install && npm run dev                  # in its own terminal
 ```
 
 That is the whole setup. Then:
 
 - Architect: <http://localhost:3000/login>
 - Django admin: <http://localhost:3000/django-admin/>
+
+Nothing has to be configured to join the two up: `next.config.ts` falls back to
+`http://localhost:8000`, which is where Compose publishes the backend.
+
+The frontend image is still defined in `docker-compose.yml`, behind a profile,
+so that it keeps being built and tested — `docker compose --profile frontend up`
+runs everything in containers instead. Do that before a deploy, since that is
+the arrangement production uses.
 
 The admin is mounted at `/django-admin/` in Django itself, not `/admin/`, so
 that it matches the path the frontend proxies it under. Django builds its own
@@ -55,21 +69,44 @@ username field.
 
 ### Accounts
 
-Professionals — architects, engineers, designers — can request an account at
+Everyone who designs and builds — architects, civil and structural engineers,
+contractors, interior designers — can create an account at
 `/register`. **Clients cannot and must not.** A client arrives on `/p/<token>`
 and is asked for nothing.
 
-Registration is approval-gated. A new account is created with
-`is_active=False`, so it exists but cannot sign in; every active superuser is
-emailed, and the account appears at the top of the Architects list in the
-admin marked `PENDING APPROVAL`. Select it and run **"Approve selected
-accounts"** — they are emailed and can sign in immediately.
+Registration is open. Four fields — name, practice, email, password — and the
+server opens the session as it creates the account, so they land on `/projects`
+without a second trip through the login form. There is no approval queue: it
+does not survive the first fifty sign-ups, since someone has to be awake to let
+each person in, and it guards nothing — a new account is empty, owns no
+projects and can reach nothing but its own. Suspending an account from the
+admin is the one switch left, and it is for abuse.
 
 Self-registered accounts are never staff and never superusers: `create_user`
 refuses both, the registration serializer cannot set them, and the profile
-endpoint cannot either. Three tests hold that line, because a public form that
-can grant Django admin access is the one mistake here that would be
-catastrophic.
+endpoint cannot either. A test holds that line, because a public form that can
+grant Django admin access is the one mistake here that would be catastrophic.
+
+### Confirming an email address
+
+Nothing in the product is gated on a confirmed address, and nothing should be.
+It exists because every notification — a client approval, a comment — goes to
+that address, and an address with a typo in it fails silently forever.
+
+So it is an offer, on the profile screen, taken up when the person feels like
+it. **Send confirmation link** emails a `TimestampSigner` token, good for 24
+hours, that lands on `/verify-email` and stamps `email_verified_at`. There is
+no token table: the link has to survive a round trip through an inbox and come
+back self-describing, and a signed string does that without rows to create,
+index and sweep. The address is signed in beside the id, so a token stops
+working the moment the address it was issued for changes.
+
+`/verify-email` asks for no session on purpose — mail apps open links in their
+own browser, which is rarely the one holding the session. The signed token
+names the account, so it authenticates itself.
+
+The admin shows the result as a tick in the Architects list, which answers the
+only question ever asked of it: are they getting our mail.
 
 Signed-in professionals edit their own details at `/profile`. Three panels,
 one of them folded shut, because this is a page somebody visits twice: once on
@@ -314,7 +351,11 @@ judge features.
   element a scroll container, and a scroll container is what `position: sticky`
   sticks inside — so with `hidden` every sticky panel on the site silently
   stops sticking. If sideways scroll ever reappears, fix the element that
-  overflows; do not change this back.
+  overflows; do not change this back. The same rule bites the other way on a
+  tab strip: setting `overflow-x` makes the browser compute `overflow-y` to
+  `auto`, so one pixel of vertical overflow — a `-mb-px` on a tab button, say
+  — earns a vertical scrollbar beside four tabs. Put the rule on a wrapper and
+  the negative margin on the strip.
 
 ## Non-goals
 

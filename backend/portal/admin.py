@@ -5,6 +5,9 @@ This is the support tool for the first six months, not an afterthought. When
 an architect phones to say "the link stopped working" or "did she actually
 approve it", the answer is found here.
 
+Nobody is let in from here: accounts are live the moment they are created.
+Suspending one is the only switch, and it is for abuse, not for a queue.
+
 Approval is registered view-only. Nobody -- not the architect, not support --
 edits the record the product exists to defend.
 """
@@ -12,8 +15,6 @@ edits the record the product exists to defend.
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count
-
-from .emails import notify_architect_of_approval_of_account
 
 from .models import (
     Approval,
@@ -25,23 +26,6 @@ from .models import (
     Milestone,
     Project,
 )
-
-
-@admin.action(description="Approve selected accounts (lets them sign in)")
-def approve_accounts(modeladmin, request, queryset):
-    pending = list(queryset.filter(is_active=False))
-    for architect in pending:
-        architect.is_active = True
-        architect.save(update_fields=["is_active"])
-        notify_architect_of_approval_of_account(architect)
-    if pending:
-        messages.success(
-            request,
-            f"Approved {len(pending)} account(s). They have been emailed and "
-            "can sign in now.",
-        )
-    else:
-        messages.info(request, "Those accounts were already active.")
 
 
 @admin.action(description="Suspend selected accounts (blocks sign-in)")
@@ -56,24 +40,25 @@ def suspend_accounts(modeladmin, request, queryset):
 class ArchitectAdmin(UserAdmin):
     """The superadmin view of everyone who has signed up.
 
-    Self-registered accounts arrive inactive and appear at the top of this
-    list until someone approves them.
+    Newest first: the only question this list is usually asked is "who
+    signed up, and are they using it".
     """
 
-    ordering = ("is_active", "-created_at")
+    ordering = ("-created_at",)
     list_display = (
         "practice_name",
         "email",
         "phone",
         "account_status",
+        "email_confirmed",
         "project_count",
         "last_login",
         "created_at",
     )
     list_filter = ("is_active", "is_staff", "is_superuser", "card_is_public")
     search_fields = ("practice_name", "full_name", "email", "phone", "card_slug")
-    readonly_fields = ("created_at", "last_login", "date_joined")
-    actions = [approve_accounts, suspend_accounts]
+    readonly_fields = ("created_at", "last_login", "date_joined", "email_verified_at")
+    actions = [suspend_accounts]
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(_projects=Count("projects"))
@@ -81,8 +66,13 @@ class ArchitectAdmin(UserAdmin):
     @admin.display(description="Status", ordering="is_active")
     def account_status(self, obj):
         if not obj.is_active:
-            return "PENDING APPROVAL"
+            return "SUSPENDED"
         return "Superuser" if obj.is_superuser else "Active"
+
+    @admin.display(description="Email", boolean=True, ordering="email_verified_at")
+    def email_confirmed(self, obj):
+        """Never a gate -- only the answer to "are they getting our mail"."""
+        return obj.email_verified
 
     @admin.display(description="Projects", ordering="_projects")
     def project_count(self, obj):
@@ -98,7 +88,7 @@ class ArchitectAdmin(UserAdmin):
             "Permissions",
             {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")},
         ),
-        ("Dates", {"fields": ("last_login", "date_joined", "created_at")}),
+        ("Dates", {"fields": ("last_login", "date_joined", "created_at", "email_verified_at")}),
     )
     add_fieldsets = (
         (

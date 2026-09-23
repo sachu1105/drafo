@@ -21,8 +21,7 @@ export function ProjectCard({ project }: { project: Project }) {
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="group flex flex-col border border-rule bg-card p-5
-                 transition-colors duration-150 hover:border-brand"
+      className="card-link group flex flex-col border border-rule bg-card p-5"
     >
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-display text-[1.3125rem] leading-snug">{project.name}</h2>

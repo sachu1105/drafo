@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { CommentThread } from "@/components/CommentThread";
 import { Empty, FormActions, FormCard } from "@/components/architect/Form";
 import { FileField } from "@/components/architect/FileField";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatDateTime, formatSize } from "@/lib/format";
 import type { DrawingSet, DrawingVersion } from "@/lib/types";
+import { IconButton } from "@/components/IconButton";
 import { Tick } from "@/components/Tick";
 
 export function DrawingsTab({
@@ -214,6 +216,7 @@ function DrawingSetCard({
   onChanged: () => Promise<void>;
 }) {
   const [versions, setVersions] = useState<DrawingVersion[] | null>(null);
+  const [uploading, setUploading] = useState(false);
   const current = set.current_version;
 
   async function loadVersions() {
@@ -264,7 +267,9 @@ function DrawingSetCard({
           </p>
         </div>
 
-        {set.version_count > 0 ? (
+        {/* Worth having when scanning a column of shut cards; noise when the
+            list it counts is open directly underneath it. */}
+        {set.version_count > 0 && !open ? (
           <span className="hidden shrink-0 text-[0.8125rem] tabular-nums text-faint sm:block">
             {set.version_count}{" "}
             {set.version_count === 1 ? "revision" : "revisions"}
@@ -275,18 +280,13 @@ function DrawingSetCard({
 
       {open ? (
         <div className="animate-rise border-t border-ruleSoft">
-          <UploadPanel
-            setId={set.id}
-            isFirst={!current}
-            onUploaded={async () => {
-              await loadVersions();
-              await onChanged();
-            }}
-          />
-
+          {/* The files first, because looking is why a card gets opened.
+              Uploading a new revision is the rarer thing and used to be the
+              tallest block on the card, sitting above the drawings it was
+              replacing. */}
           {set.version_count > 0 ? (
-            <div className="border-t border-ruleSoft px-5 py-5">
-              <h4 className="eyebrow">Revision history</h4>
+            <div className="px-5 py-5">
+              <h4 className="eyebrow">Revisions</h4>
               {versions === null ? (
                 <p className="mt-3 text-[0.875rem] text-faint">Loading…</p>
               ) : (
@@ -300,8 +300,42 @@ function DrawingSetCard({
                   ))}
                 </ol>
               )}
+
+              {uploading ? (
+                <div className="mt-4">
+                  <UploadPanel
+                    setId={set.id}
+                    isFirst={false}
+                    onUploaded={async () => {
+                      setUploading(false);
+                      await loadVersions();
+                      await onChanged();
+                    }}
+                    onCancel={() => setUploading(false)}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setUploading(true)}
+                  className="btn-quiet mt-4"
+                >
+                  Upload a new revision
+                </button>
+              )}
             </div>
-          ) : null}
+          ) : (
+            /* Nothing in the set yet, so uploading is the only thing to do
+               and it is already open. */
+            <UploadPanel
+              setId={set.id}
+              isFirst
+              onUploaded={async () => {
+                await loadVersions();
+                await onChanged();
+              }}
+            />
+          )}
 
           {current ? (
             /* No rule of its own: the wrapper already draws one, and the two
@@ -327,10 +361,13 @@ function UploadPanel({
   setId,
   isFirst,
   onUploaded,
+  onCancel,
 }: {
   setId: number;
   isFirst: boolean;
   onUploaded: () => Promise<void>;
+  /** Present only when the panel was opened on purpose and can be shut. */
+  onCancel?: () => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [notes, setNotes] = useState("");
@@ -363,12 +400,10 @@ function UploadPanel({
   }
 
   return (
-    <form onSubmit={submit} className="px-5 py-5">
-      <h4 className="eyebrow">
-        {isFirst ? "Upload the drawing" : "Upload a new revision"}
-      </h4>
+    <form onSubmit={submit} className={isFirst ? "px-5 py-5" : ""}>
+      {isFirst ? <h4 className="eyebrow">Upload the drawing</h4> : null}
 
-      <div className="mt-3">
+      <div className={isFirst ? "mt-3" : ""}>
         <FileField
           file={file}
           onFile={setFile}
@@ -398,15 +433,54 @@ function UploadPanel({
       {/* The note about the client being emailed used to live beside this
           button. It is true of every upload in the product and it was being
           restated on every card, every time. */}
-      <div className="mt-4">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button type="submit" disabled={busy || !file} className="btn-primary">
           {busy ? "Uploading…" : isFirst ? "Upload drawing" : "Upload revision"}
         </button>
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="btn-text px-3"
+          >
+            Cancel
+          </button>
+        ) : null}
       </div>
     </form>
   );
 }
 
+/**
+ * One revision in the history of a set.
+ *
+ * Four facts land here -- which revision, what file, what the architect said
+ * about it, and who approved it -- and they used to arrive as four grey lines
+ * of the same size, under a filled badge that said "2" an inch to the left of
+ * the words "Revision 2". Everything had equal weight, so nothing had any,
+ * and the approval -- the one thing on this row anybody will argue about six
+ * months from now -- read as the last line of metadata.
+ *
+ * Now the row is ranked. The revision number and the way into the file are
+ * the only line that has to be read; the file is quiet underneath it; the
+ * note is ruled off as somebody's sentence; the approval is a record with a
+ * band around it.
+ */
+/**
+ * One revision in the history of a set.
+ *
+ * Four facts land here -- which revision, what file, what the architect said
+ * about it, and who approved it -- and they used to arrive as four grey lines
+ * of the same size, under a filled badge that said "2" an inch to the left of
+ * the words "Revision 2". Everything had equal weight, so nothing had any,
+ * and the approval -- the one thing on this row anybody will argue about six
+ * months from now -- read as the last line of metadata.
+ *
+ * Now the row is ranked: the revision number and the way into the file on the
+ * line you scan, the file quietly under it, the note ruled off as somebody's
+ * sentence, the approval stamped.
+ */
 function RevisionRow({
   version,
   isCurrent,
@@ -415,65 +489,71 @@ function RevisionRow({
   isCurrent: boolean;
 }) {
   return (
-    <li className="bg-card px-4 py-3.5">
-      <div className="flex items-start gap-3.5">
-        <span
-          aria-hidden
-          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center
-                      text-[0.75rem] tabular-nums ${
-                        isCurrent
-                          ? "bg-brand text-paper"
-                          : "border border-rule text-muted"
-                      }`}
-        >
-          {version.version_number}
+    <li className="bg-card px-4 py-3.5 sm:px-5">
+      <div className="flex items-center gap-3">
+        <h5 className="text-[0.9375rem] font-medium">
+          Revision {version.version_number}
+        </h5>
+
+        {/* Which one is live was set in the faintest grey on the page, which
+            is the wrong end of the scale for the single fact this list is
+            opened to find. */}
+        {isCurrent ? (
+          <span className="chip bg-brand text-paper">Current</span>
+        ) : null}
+
+        {/* The file name is already on the next line, so the word "Open" was
+            saying it a third time. What is left is the one thing the row
+            cannot say in prose: that this opens somewhere else. */}
+        <span className="-my-1.5 ml-auto">
+          <IconButton
+            label={`Open ${version.file_name}`}
+            icon={ExternalLink}
+            href={version.file_url}
+            newTab
+          />
         </span>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <p className="text-[0.9375rem]">Revision {version.version_number}</p>
-            {isCurrent ? (
-              <span className="text-[0.6875rem] uppercase tracking-[0.14em] text-faint">
-                Current
-              </span>
-            ) : null}
-          </div>
-
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] text-muted">
-            <span className="truncate">{version.file_name}</span>
-            <Dot />
-            <span>{formatSize(version.file_size)}</span>
-            <Dot />
-            <span>{formatDate(version.uploaded_at)}</span>
-          </p>
-
-          {version.notes ? (
-            <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted">
-              {version.notes}
-            </p>
-          ) : null}
-
-          {version.approval ? (
-            <p className="mt-1.5 flex items-center gap-1.5 text-[0.8125rem] text-accent">
-              <Tick />
-              Approved by {version.approval.approved_by_name} on{" "}
-              {formatDateTime(version.approval.approved_at)}
-            </p>
-          ) : (
-            <p className="mt-1.5 text-[0.8125rem] text-faint">Not approved</p>
-          )}
-        </div>
-
-        <a
-          href={version.file_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 text-[0.8125rem] text-muted underline
-                     decoration-rule underline-offset-4 hover:text-ink"
-        >
-          Open
-        </a>
       </div>
+
+      {/* "Uploaded" is not padding. The approval below carries a date of its
+          own, and on the day a drawing is approved the two are the same
+          words two lines apart meaning different things. */}
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] text-muted">
+        <span className="truncate">{version.file_name}</span>
+        <Dot />
+        <span className="tabular-nums">{formatSize(version.file_size)}</span>
+        <Dot />
+        <span>Uploaded {formatDate(version.uploaded_at)}</span>
+      </p>
+
+      {/* Set in the same grey as the file size, a sentence the architect
+          wrote by hand was indistinguishable from a field the system filled
+          in. The rule down its left says it is a quotation. */}
+      {version.notes ? (
+        <p className="mt-2.5 border-l-2 border-rule pl-3 text-[0.875rem] leading-relaxed">
+          {version.notes}
+        </p>
+      ) : null}
+
+      {/* Only the approvals. "Not approved" on the current revision repeats
+          the card header three lines above it, and on a superseded one it is
+          the normal state of things. What is worth recording -- and what the
+          product exists to defend -- is who approved what, and when. */}
+      {version.approval ? (
+        <p className="stamp mt-2.5">
+          <Tick />
+          <span>
+            Approved by{" "}
+            <span className="font-medium">
+              {version.approval.approved_by_name}
+            </span>
+          </span>
+          <Dot />
+          <span className="tabular-nums">
+            {formatDateTime(version.approval.approved_at)}
+          </span>
+        </p>
+      ) : null}
     </li>
   );
 }

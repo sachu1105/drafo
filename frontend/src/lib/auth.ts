@@ -15,15 +15,27 @@ export type Registration = {
   /** Optional: an account that never gives one is named by its practice. */
   full_name: string;
   practice_name: string;
-  phone: string;
   password: string;
 };
 
-/** Ask for an account. Comes back pending -- a superuser has to approve it. */
-export async function register(
-  form: Registration,
-): Promise<{ detail: string; pending: boolean }> {
-  return api("/auth/register/", { method: "POST", body: { ...form } });
+/**
+ * Create an account. There is no queue and no wall: the server opens the
+ * session and hands back the account, so the caller goes straight in.
+ */
+export async function register(form: Registration): Promise<Architect> {
+  return api<Architect>("/auth/register/", { method: "POST", body: { ...form } });
+}
+
+/** Email me the link that confirms my address. */
+export async function sendEmailVerification(): Promise<{ detail: string }> {
+  return api("/auth/verify-email/send/", { method: "POST" });
+}
+
+/** Spend the token from that email. No session needed: the token is signed. */
+export async function confirmEmailVerification(
+  token: string,
+): Promise<{ detail: string; email: string }> {
+  return api("/auth/verify-email/confirm/", { method: "POST", body: { token } });
 }
 
 export async function login(email: string, password: string): Promise<Architect> {

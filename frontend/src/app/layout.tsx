@@ -21,7 +21,9 @@ const body = DM_Sans({
 
 export const metadata: Metadata = {
   title: "Drafo",
-  description: "A private portal between an architect and their client.",
+  description:
+    "One private place to run a project with your client: drawings, "
+    + "materials and payments.",
 };
 
 export const viewport: Viewport = {

@@ -2,30 +2,34 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/marketing/AuthShell";
 import { ApiError } from "@/lib/api";
 import { register } from "@/lib/auth";
 
 /**
- * Registration -- for architects, engineers and designers only.
+ * Registration -- for whoever sends the drawings, and only them.
  *
  * Their clients never see this page and must never be sent here. A client
- * arrives on /p/<token> and is asked for nothing at all.
+ * arrives on /p/<token> and is asked for nothing at all. That, not a list of
+ * job titles, is the line this page has to draw.
  *
- * Accounts arrive inactive and wait for a superuser to approve them, so this
- * form is a request for access rather than a door.
+ * Four fields, and then they are in. Nothing waits for approval and nothing
+ * waits for an email: an account that has just been made is empty, owns no
+ * projects and can reach nothing but its own, so there is nothing to guard.
+ * Everything else about them -- phone, location, logo, photo, the card -- is
+ * on the profile screen, filled in by someone who has seen what it is for.
  */
 export default function RegisterPage() {
+  const router = useRouter();
   const [form, setForm] = useState({
     full_name: "",
     practice_name: "",
     email: "",
-    phone: "",
     password: "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
 
   function set(field: keyof typeof form) {
     return (event: React.ChangeEvent<HTMLInputElement>) =>
@@ -37,8 +41,10 @@ export default function RegisterPage() {
     setBusy(true);
     setError(null);
     try {
+      // The server signs them in as it creates the account, so there is no
+      // second trip through the login form.
       await register(form);
-      setDone(true);
+      router.replace("/projects");
     } catch (caught) {
       setError(
         caught instanceof ApiError ? caught.message : "Could not create the account.",
@@ -47,35 +53,11 @@ export default function RegisterPage() {
     }
   }
 
-  if (done) {
-    return (
-      <AuthShell>
-        <h1 className="font-display text-display">Request received</h1>
-        <p className="mt-4 text-[0.9375rem] leading-relaxed text-muted">
-          Your account for <span className="text-ink">{form.practice_name}</span>{" "}
-          has been created and is waiting for approval.
-        </p>
-        <p className="mt-3 text-[0.9375rem] leading-relaxed text-muted">
-          You will be able to sign in as soon as it is activated. We will email{" "}
-          {form.email} when that happens.
-        </p>
-        <div className="mt-8 flex flex-wrap items-center gap-3">
-          <Link href="/" className="btn-primary">
-            Back to the site
-          </Link>
-          <Link href="/login" className="btn-quiet">
-            Sign in
-          </Link>
-        </div>
-      </AuthShell>
-    );
-  }
-
   return (
     <AuthShell>
       <h1 className="font-display text-display">Create an account</h1>
       <p className="mt-2 text-[0.9375rem] leading-relaxed text-muted">
-        For architects, engineers and designers. Your clients do not need an
+        For everyone who designs and builds. Your clients do not need an
         account — you send them a link.
       </p>
 
@@ -115,16 +97,6 @@ export default function RegisterPage() {
             onChange={set("email")}
             required
             autoComplete="username"
-            className="field"
-          />
-        </Field>
-
-        <Field label="Phone">
-          <input
-            type="tel"
-            value={form.phone}
-            onChange={set("phone")}
-            autoComplete="tel"
             className="field"
           />
         </Field>

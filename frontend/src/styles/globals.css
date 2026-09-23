@@ -106,17 +106,63 @@
            placeholder:text-faint focus:outline-none;
   }
 
+  /* --- one rule about corners -------------------------------------------
+   *
+   * Surfaces are square and controls are round. Cards, panels, fields, rules
+   * and tables keep their right angles, because the product is about drawings
+   * on paper and a drawing board has corners. Anything you press or anything
+   * that reports a state -- buttons, icon buttons, chips, the approval stamp
+   * -- is fully rounded, because it is not part of the drawing.
+   *
+   * Two shapes, each meaning one thing. That is what stops the interface
+   * reading as a wall of identical grey boxes without turning it into a
+   * scatter of unrelated radii: every curve on the page is a thing you can
+   * act on, and the eye learns that in about four seconds.
+   *
+   * A pill rather than a small radius on purpose. Six pixels of corner next
+   * to a square card looks like a mistake; a full lozenge looks decided. */
+
   /* Every tappable thing clears 44px, because it is tapped with a thumb. */
   .btn {
-    @apply inline-flex min-h-[44px] items-center justify-center gap-2 px-5 py-3
-           text-[0.9375rem] font-medium transition-colors duration-150
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full
+           px-5 py-3 text-[0.9375rem] font-medium transition-colors duration-150
            disabled:cursor-not-allowed;
+  }
+
+  /* A state, worn by the thing it describes: "Current", "Paid", "Approved".
+     Never pressable -- if it can be clicked it is a .btn. */
+  .chip {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1
+           text-[0.6875rem] font-medium uppercase tracking-[0.1em];
+  }
+
+  /* The approval, as a stamp rather than a banner. It is the one record this
+     product exists to keep, and a full-width tinted band made it look like a
+     system message. Sized to its own words, it reads as something pressed
+     into the page. */
+  .stamp {
+    @apply flex w-fit flex-wrap items-center gap-x-2 gap-y-0.5 rounded-full
+           bg-accentSoft px-3 py-1.5 text-[0.8125rem] text-accent;
   }
 
   /* A disabled primary used to be the filled button at 40% opacity, which is
      a washed-out grey slab that reads as broken rather than as not-yet. It is
      now an outline: visibly the same button, visibly not ready. The outline is
      an inset shadow rather than a border so the box does not resize. */
+  /* A card you can click.
+   *
+   * Elevation rather than a coloured edge. The brand green is desaturated
+   * enough that a pixel of it on cream reads as a dark line rather than as
+   * green, so the old hover was already brand and simply did not look it --
+   * and a heavier edge only made the line darker, not greener. A shadow says
+   * "this one" without asking the palette to do something it cannot.
+   *
+   * Shadow only, no transform: nothing else on this page moves, and a card
+   * that jumps under the pointer would be the only thing that does. */
+  .card-link {
+    @apply transition-shadow duration-150 hover:shadow-lift;
+  }
+
   .btn-primary {
     @apply btn bg-brand text-paper hover:bg-brandDark
            disabled:bg-transparent disabled:text-faint
@@ -130,8 +176,10 @@
            disabled:hover:border-ruleSoft;
   }
 
+  /* A word, not a lozenge: no fill and no border to round, so the radius
+     would only show up as a clipped focus ring. */
   .btn-text {
-    @apply btn px-0 text-muted underline decoration-rule hover:text-ink;
+    @apply btn rounded-none px-0 text-muted underline decoration-rule hover:text-ink;
   }
 }
 
