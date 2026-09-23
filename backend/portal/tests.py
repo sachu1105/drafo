@@ -14,9 +14,10 @@ import shutil
 import tempfile
 from datetime import timedelta
 from decimal import Decimal
-from unittest import mock
+from unittest import mock, skipUnless
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
@@ -1947,3 +1948,128 @@ class ProjectEditingTests(MediaSandbox):
         self.assertEqual(
             self.client.get(f"/api/p/{self.project.access_token}/").status_code, 200
         )
+
+
+class ProjectSearchTests(MediaSandbox):
+    """Finding a job in your own list.
+
+    Written to pass on both backends. The behaviour they share -- scoping,
+    substring matching, the status filter -- is asserted unconditionally; the
+    parts only Postgres can do are asserted only where Postgres is running,
+    because the development database is SQLite and a test suite that fails on
+    a laptop is a test suite nobody runs.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.architect = make_architect("anna@studio.example", "Anna Mathew Architects")
+        self.client.force_login(self.architect)
+
+        self.villa = Project.objects.create(
+            architect=self.architect,
+            name="Villa at Kakkanad",
+            client_name="Mr Thomas",
+        )
+        self.flat = Project.objects.create(
+            architect=self.architect,
+            name="Flat interior, Panampilly",
+            client_name="Mrs Beena",
+            status="on_hold",
+        )
+        self.shop = Project.objects.create(
+            architect=self.architect,
+            name="Shop fitout",
+            client_name="Mr Kurian",
+            status="completed",
+        )
+
+    def names(self, **params):
+        response = self.client.get("/api/projects/", params)
+        self.assertEqual(response.status_code, 200, response.content)
+        return [project["name"] for project in response.json()]
+
+    # --- searching --------------------------------------------------------
+
+    def test_a_project_is_found_by_its_name(self):
+        self.assertEqual(self.names(q="Kakkanad"), ["Villa at Kakkanad"])
+
+    def test_a_project_is_found_by_its_client(self):
+        """Half of what an architect remembers about a job is whose it is."""
+        self.assertEqual(self.names(q="Beena"), ["Flat interior, Panampilly"])
+
+    def test_a_partly_typed_word_matches(self):
+        """Full text matches whole words, so the prefix case needs its own arm
+        or the box stays empty until the last keystroke."""
+        self.assertEqual(self.names(q="Kakka"), ["Villa at Kakkanad"])
+
+    def test_case_does_not_matter(self):
+        self.assertEqual(self.names(q="kakkanad"), ["Villa at Kakkanad"])
+
+    def test_nothing_matching_returns_nothing(self):
+        self.assertEqual(self.names(q="warehouse"), [])
+
+    def test_an_empty_search_returns_everything(self):
+        self.assertEqual(len(self.names(q="")), 3)
+        self.assertEqual(len(self.names(q="   ")), 3)
+
+    def test_search_never_reaches_another_practice(self):
+        """The search filters a list that is already scoped. It must not be
+        able to widen it."""
+        other = make_architect("other@studio.example", "Other")
+        Project.objects.create(
+            architect=other, name="Villa at Kakkanad", client_name="Someone else"
+        )
+        self.assertEqual(self.names(q="Kakkanad"), ["Villa at Kakkanad"])
+        self.assertEqual(len(self.names(q="Villa")), 1)
+
+    def test_a_search_term_with_punctuation_does_not_break(self):
+        """websearch parsing gives quotes and minus signs meaning, so the box
+        has to survive somebody typing them."""
+        for term in ('"villa"', "villa -flat", "a & b", "'", "%%%"):
+            self.client.get("/api/projects/", {"q": term})
+
+    # --- the status filter ------------------------------------------------
+
+    def test_filtering_by_status(self):
+        self.assertEqual(self.names(status="on_hold"), ["Flat interior, Panampilly"])
+        self.assertEqual(self.names(status="completed"), ["Shop fitout"])
+        self.assertEqual(self.names(status="active"), ["Villa at Kakkanad"])
+
+    def test_no_status_means_every_status(self):
+        self.assertEqual(len(self.names()), 3)
+
+    def test_an_unknown_status_is_ignored_not_refused(self):
+        """A stale bookmark should show the projects, not an error page."""
+        self.assertEqual(len(self.names(status="paused")), 3)
+
+    def test_the_two_filters_combine(self):
+        self.assertEqual(self.names(q="Mr", status="completed"), ["Shop fitout"])
+        self.assertEqual(self.names(q="Kakkanad", status="completed"), [])
+
+    # --- what only Postgres can do ----------------------------------------
+
+    @skipUnless(connection.vendor == "postgresql", "needs Postgres")
+    def test_a_misspelling_still_finds_it(self):
+        """Trigram similarity. The reason pg_trgm is switched on at all."""
+        self.assertEqual(self.names(q="Kakanad"), ["Villa at Kakkanad"])
+
+    @skipUnless(connection.vendor == "postgresql", "needs Postgres")
+    def test_a_word_is_found_in_any_of_its_forms(self):
+        Project.objects.create(
+            architect=self.architect,
+            name="Kitchen drawings",
+            client_name="Mr Paul",
+        )
+        self.assertEqual(self.names(q="drawing"), ["Kitchen drawings"])
+
+    @skipUnless(connection.vendor == "postgresql", "needs Postgres")
+    def test_the_best_match_comes_first(self):
+        """Ranking is the thing icontains cannot do at all."""
+        Project.objects.create(
+            architect=self.architect, name="Thomas Residence", client_name="Mr Paul"
+        )
+        found = self.names(q="Thomas")
+        # The project actually called Thomas outranks the one merely owned by
+        # a Mr Thomas: name is weighted above client name.
+        self.assertEqual(found[0], "Thomas Residence")
+        self.assertIn("Villa at Kakkanad", found)

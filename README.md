@@ -424,6 +424,36 @@ judge features.
   — earns a vertical scrollbar beside four tabs. Put the rule on a wrapper and
   the negative margin on the strip.
 
+### Finding a project
+
+`GET /api/projects/?q=kakkanad&status=on_hold`. Both narrow a queryset that is
+already scoped to the signed-in architect, so neither can widen what comes
+back. An unknown status is ignored rather than refused — this is a filter on a
+list, not a form, and a stale bookmark should show the projects.
+
+Search is Postgres, in `portal/search.py`, and it is three things at once
+because an architect looks for a job by half-remembering it:
+
+| Arm | Buys | Example |
+|---|---|---|
+| Full text (`websearch`) | stemming and a rank to sort by | "drawing" finds "Kitchen drawings" |
+| Trigram (`pg_trgm`) | survives a misspelling | "Kakanad" finds "Kakkanad" |
+| `icontains` | the prefix case | "Kakka" finds it four letters in |
+
+The client's name is searched alongside the project's at a lower weight, so a
+project called "Thomas Residence" outranks one merely owned by a Mr Thomas.
+Half of what an architect remembers about a job is whose it is.
+
+**On SQLite it falls back to plain `icontains`, with no ranking.** The
+development database is SQLite and production is Postgres, and rather than let
+the two differ in silence the fallback is deliberate and narrow — it keeps
+`runserver` and the test suite working on a laptop. The real behaviour is the
+Postgres one. The tests reflect this: everything the two backends share is
+asserted unconditionally, and the three tests for stemming, fuzzy matching and
+ranking are `skipUnless(connection.vendor == "postgresql")`, so
+`docker compose exec backend python manage.py test portal` is the run that
+proves the feature.
+
 ### Two themes
 
 Every colour in the product is a CSS variable, defined twice in

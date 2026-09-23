@@ -46,6 +46,7 @@ from .models import (
     Unit,
 )
 from .permissions import HasProjectToken, IsProjectArchitect
+from .search import search_projects
 from .serializers import (
     ApprovalCreateSerializer,
     ApprovalSerializer,
@@ -290,12 +291,30 @@ class ArchitectScopedMixin:
 
 
 class ProjectListCreateView(ArchitectScopedMixin, generics.ListCreateAPIView):
+    """The architect's own projects, optionally narrowed.
+
+        ?q=kakkanad       full-text and fuzzy, over project and client name
+        ?status=on_hold   one of Project.Status
+
+    Both are filters on a queryset that is already scoped to the signed-in
+    architect, so neither can widen what is returned -- only narrow it.
+    """
+
     serializer_class = ProjectSerializer
 
     def get_queryset(self):
-        return self.projects().prefetch_related(
+        queryset = self.projects().prefetch_related(
             "drawing_sets__versions__approvals", "materials", "milestones"
         )
+
+        status_filter = self.request.query_params.get("status", "").strip()
+        # An unknown status is ignored rather than refused. This is a filter on
+        # a list, not a form: a stale bookmark with a status that no longer
+        # exists should show the projects, not an error page.
+        if status_filter in Project.Status.values:
+            queryset = queryset.filter(status=status_filter)
+
+        return search_projects(queryset, self.request.query_params.get("q", ""))
 
     def perform_create(self, serializer):
         serializer.save(architect=self.request.user)
