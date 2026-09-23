@@ -62,6 +62,34 @@ def welcome(architect) -> None:
     )
 
 
+def send_invoice(invoice) -> None:
+    """Send the client the link to a bill or an estimate.
+
+    Silent when the project has no client email: plenty of architects send the
+    link on WhatsApp instead, and that is a normal way to work here, not an
+    error worth shouting about.
+    """
+    heading = invoice.get_kind_display().lower()
+    body = (
+        f"Dear {invoice.to_name},\n\n"
+        f"{invoice.from_name} has sent you {heading} {invoice.number} "
+        f"for {invoice.project.name}.\n\n"
+        f"Amount: {invoice.total}\n"
+    )
+    if invoice.due_on:
+        body += f"Due: {invoice.due_on:%d %B %Y}\n"
+    body += (
+        f"\nYou can read it, print it or save it as a PDF here:\n"
+        f"{invoice.client_url}\n\n"
+        "No login is needed. Keep this link private.\n"
+    )
+    _send(
+        f"{invoice.get_kind_display()} {invoice.number} from {invoice.from_name}",
+        body,
+        invoice.to_email,
+    )
+
+
 def notify_client_of_upload(version) -> None:
     drawing_set = version.drawing_set
     project = drawing_set.project

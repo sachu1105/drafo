@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { Pencil, X } from "lucide-react";
 import { FileField } from "@/components/architect/FileField";
+import { ImagesField } from "@/components/architect/ImagesField";
+import { Select } from "@/components/architect/Select";
+import { UnitField } from "@/components/architect/UnitField";
+import { IconButton } from "@/components/IconButton";
 import { InvoiceLink } from "@/components/InvoiceLink";
 import {
   Empty,
@@ -13,7 +18,12 @@ import {
 } from "@/components/architect/Form";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
-import type { Material, MaterialCategory } from "@/lib/types";
+import type {
+  Material,
+  MaterialCategory,
+  MaterialPhoto,
+  Unit,
+} from "@/lib/types";
 
 const CATEGORIES: { value: MaterialCategory; label: string }[] = [
   { value: "flooring", label: "Flooring" },
@@ -26,6 +36,10 @@ const CATEGORIES: { value: MaterialCategory; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+// Kept in step with MAX_MATERIAL_PHOTOS in portal/serializers.py, which
+// remains the gate. This only saves the architect a failed upload.
+const MAX_PHOTOS = 8;
+
 const BLANK = {
   category: "flooring" as MaterialCategory,
   name: "",
@@ -35,6 +49,20 @@ const BLANK = {
   notes: "",
 };
 
+/** The form's fields for a material, or an empty set of them for a new one. */
+function draftOf(material: Material | undefined): typeof BLANK {
+  if (!material) return BLANK;
+  return {
+    category: material.category,
+    name: material.name,
+    brand: material.brand,
+    // The API sends "2000.00" and the box should not say that back.
+    price: material.price ? String(Number(material.price)) : "",
+    unit: material.unit,
+    notes: material.notes,
+  };
+}
+
 export function MaterialsTab({
   projectId,
   onChanged,
@@ -43,7 +71,13 @@ export function MaterialsTab({
   onChanged?: () => void;
 }) {
   const [materials, setMaterials] = useState<Material[] | null>(null);
+  // Fetched once here rather than inside each form: the list is the same for
+  // every row, and an edit form should open with its dropdown already filled.
+  const [units, setUnits] = useState<string[]>([]);
   const [adding, setAdding] = useState(false);
+  /** Which row is open for editing. One at a time: two half-finished edits
+      on one screen is a way to save the wrong one. */
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   async function load() {
     setMaterials(await api<Material[]>(`/projects/${projectId}/materials/`));
@@ -51,6 +85,11 @@ export function MaterialsTab({
 
   useEffect(() => {
     load().catch(() => setMaterials([]));
+    // A failure here costs the dropdown, not the form: the unit box falls
+    // back to being typed, which it accepts anyway.
+    api<Unit[]>("/units/")
+      .then((loaded) => setUnits(loaded.map((unit) => unit.label)))
+      .catch(() => setUnits([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -87,8 +126,9 @@ export function MaterialsTab({
       ) : null}
 
       {adding ? (
-        <AddMaterialForm
+        <MaterialForm
           projectId={projectId}
+          units={units}
           onDone={async () => {
             setAdding(false);
             await refresh();
@@ -129,13 +169,40 @@ export function MaterialsTab({
                   {category}
                 </h3>
                 <ul>
-                  {items.map((material) => (
-                    <MaterialRow
-                      key={material.id}
-                      material={material}
-                      onRemove={() => remove(material)}
-                    />
-                  ))}
+                  {items.map((material) =>
+                    /* The form takes the row's place rather than opening
+                       above the list. What is being changed stays where it
+                       was found, and nothing below it moves. */
+                    editingId === material.id ? (
+                      <li key={material.id} className="border-t border-ruleSoft py-3.5">
+                        <MaterialForm
+                          projectId={projectId}
+                          units={units}
+                          material={material}
+                          onDone={async () => {
+                            setEditingId(null);
+                            await refresh();
+                          }}
+                          onCancel={async () => {
+                            setEditingId(null);
+                            // A removed picture is already gone from the
+                            // server, so the list has to be told.
+                            await refresh();
+                          }}
+                        />
+                      </li>
+                    ) : (
+                      <MaterialRow
+                        key={material.id}
+                        material={material}
+                        onEdit={() => {
+                          setAdding(false);
+                          setEditingId(material.id);
+                        }}
+                        onRemove={() => remove(material)}
+                      />
+                    ),
+                  )}
                 </ul>
               </section>
             ))}
@@ -155,9 +222,11 @@ export function MaterialsTab({
  */
 function MaterialRow({
   material,
+  onEdit,
   onRemove,
 }: {
   material: Material;
+  onEdit: () => void;
   onRemove: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -191,7 +260,10 @@ function MaterialRow({
 
   return (
     <li className="group flex items-start gap-4 border-t border-ruleSoft py-3.5 sm:items-center">
-      <Thumbnail url={material.photo_url} />
+      <Thumbnail
+        url={material.photos[0]?.url ?? null}
+        extra={material.photos.length - 1}
+      />
 
       <div className="min-w-0 flex-1">
         {/* Wraps rather than truncates. At 390px a fixed price column beside
@@ -233,30 +305,32 @@ function MaterialRow({
         ) : null}
       </div>
 
-      {/* Quiet but always there. Hover-only would hide it on every phone,
-          and a one-tap delete of something the client can see should ask. */}
-      <button
-        type="button"
-        onClick={() => setConfirming(true)}
-        aria-label={`Remove ${material.name}`}
-        className="flex h-9 w-9 shrink-0 items-center justify-center text-faint
-                   transition-colors duration-150 hover:bg-paper hover:text-ink"
-      >
-        <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5">
-          <path
-            d="M3.5 3.5l9 9M12.5 3.5l-9 9"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
+      {/* Quiet but always there. Hover-only would hide both of these on
+          every phone, and a one-tap delete of something the client can see
+          should ask first. */}
+      <div className="-my-1.5 flex shrink-0 items-center">
+        <IconButton
+          label={`Edit ${material.name}`}
+          icon={Pencil}
+          onClick={onEdit}
+        />
+        <IconButton
+          label={`Remove ${material.name}`}
+          icon={X}
+          onClick={() => setConfirming(true)}
+        />
+      </div>
     </li>
   );
 }
 
-/** The material, small. A filled frame rather than a dashed empty one. */
-function Thumbnail({ url }: { url: string | null }) {
+/** The material, small. A filled frame rather than a dashed empty one.
+ *
+ * `extra` is how many more pictures there are behind this one. Shown as a
+ * count in the corner rather than a second thumbnail: the row is a scan line,
+ * and what it has to answer is "is there more to look at", not "what".
+ */
+function Thumbnail({ url, extra = 0 }: { url: string | null; extra?: number }) {
   if (!url) {
     return (
       <span
@@ -266,30 +340,81 @@ function Thumbnail({ url }: { url: string | null }) {
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={url}
-      alt=""
-      loading="lazy"
-      className="h-12 w-12 shrink-0 border border-ruleSoft object-cover"
-    />
+    <span className="relative h-12 w-12 shrink-0">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        className="h-12 w-12 border border-ruleSoft object-cover"
+      />
+      {extra > 0 ? (
+        <span
+          aria-label={`${extra + 1} pictures`}
+          className="absolute -bottom-1 -right-1 flex h-5 min-w-[1.25rem] items-center
+                     justify-center rounded-full bg-brand px-1 text-[0.625rem]
+                     font-medium tabular-nums text-paper"
+        >
+          +{extra}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
-function AddMaterialForm({
+/**
+ * Add a material, or change one. The same form both ways.
+ *
+ * They were never going to be two forms. Everything an architect can say
+ * about a selection when it is first recorded, they can be wrong about later
+ * -- a price agreed at the wrong figure, a tile that turned out to be the
+ * matt one, a photograph taken before the sample arrived -- and a form that
+ * can only create makes every one of those a delete and a retype.
+ *
+ * The one real difference is what empty means. Creating, an empty box is a
+ * field not filled in and is left out of the request; editing, an empty box
+ * is a field being cleared and has to be sent, or a brand typed by mistake
+ * can never be removed.
+ */
+function MaterialForm({
   projectId,
+  units,
+  material,
   onDone,
   onCancel,
 }: {
   projectId: number;
+  units: string[];
+  /** Present when editing. Absent when adding. */
+  material?: Material;
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [form, setForm] = useState(BLANK);
-  const [photo, setPhoto] = useState<File | null>(null);
+  const editing = material !== undefined;
+  const [form, setForm] = useState(() => draftOf(material));
+  const [photos, setPhotos] = useState<File[]>([]);
+  // Pictures already on the server, which are removed one request at a time
+  // rather than as part of the save -- a picture the architect has just
+  // deleted should not come back if they then cancel out of the form.
+  const [kept, setKept] = useState<MaterialPhoto[]>(material?.photos ?? []);
   const [invoice, setInvoice] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const unitsId = useId();
+  const categoryId = useId();
+
+  async function dropPhoto(photo: MaterialPhoto) {
+    setKept((current) => current.filter((one) => one.id !== photo.id));
+    try {
+      await api<void>(`/materials/${material!.id}/photos/${photo.id}/`, {
+        method: "DELETE",
+      });
+    } catch {
+      // Put it back rather than lie about what is stored.
+      setKept(material?.photos ?? []);
+      setError("Could not remove that picture.");
+    }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -299,20 +424,24 @@ function AddMaterialForm({
     payload.append("category", form.category);
     payload.append("name", form.name.trim());
     for (const field of ["brand", "price", "unit", "notes"] as const) {
-      if (form[field].trim()) payload.append(field, form[field].trim());
+      const value = form[field].trim();
+      if (value || editing) payload.append(field, value);
     }
-    if (photo) payload.append("photo", photo);
+    // One repeated key, which is what the serializer reads with getlist().
+    for (const picture of photos) payload.append("photos", picture);
     if (invoice) payload.append("invoice", invoice);
 
     setBusy(true);
     setError(null);
     try {
-      await api<Material>(`/projects/${projectId}/materials/`, {
-        method: "POST",
-        body: payload,
-      });
-      setForm(BLANK);
-      setPhoto(null);
+      await api<Material>(
+        editing
+          ? `/materials/${material.id}/`
+          : `/projects/${projectId}/materials/`,
+        { method: editing ? "PATCH" : "POST", body: payload },
+      );
+      setForm(draftOf(undefined));
+      setPhotos([]);
       setInvoice(null);
       onDone();
     } catch (caught) {
@@ -327,20 +456,18 @@ function AddMaterialForm({
   return (
     <FormCard onSubmit={submit}>
       <FormGrid>
-        <Labelled label="Category" span={4}>
-          <select
+        <Labelled label="Category" span={4} htmlFor={categoryId}>
+          <Select
+            id={categoryId}
             value={form.category}
-            onChange={(event) =>
-              setForm({ ...form, category: event.target.value as MaterialCategory })
+            onChange={(category) =>
+              setForm({ ...form, category: category as MaterialCategory })
             }
-            className="select"
-          >
-            {CATEGORIES.map((category) => (
-              <option key={category.value} value={category.value}>
-                {category.label}
-              </option>
-            ))}
-          </select>
+            choices={CATEGORIES.map((category) => ({
+              value: category.value,
+              label: category.label,
+            }))}
+          />
         </Labelled>
 
         <Labelled label="Item" span={8}>
@@ -371,13 +498,12 @@ function AddMaterialForm({
           />
         </Labelled>
 
-        <Labelled label="Unit" span={4}>
-          <input
-            type="text"
+        <Labelled label="Unit" span={4} htmlFor={unitsId}>
+          <UnitField
+            id={unitsId}
             value={form.unit}
-            onChange={(event) => setForm({ ...form, unit: event.target.value })}
-            placeholder="per sq ft"
-            className="field"
+            onChange={(unit) => setForm({ ...form, unit })}
+            units={units}
           />
         </Labelled>
 
@@ -391,12 +517,15 @@ function AddMaterialForm({
           />
         </Labelled>
 
-        <Labelled label="Photo" span={6}>
-          <FileField
-            file={photo}
-            onFile={setPhoto}
-            accept="image/png,image/jpeg"
-            hint="PNG or JPG, optional"
+        <Labelled label="Photos" span={6}>
+          <ImagesField
+            files={photos}
+            onFiles={setPhotos}
+            existing={kept}
+            onRemoveExisting={dropPhoto}
+            accept="image/png,image/jpeg,image/webp"
+            hint="PNG, JPG or WEBP — the first one is the thumbnail"
+            max={MAX_PHOTOS}
             disabled={busy}
           />
         </Labelled>
@@ -406,7 +535,11 @@ function AddMaterialForm({
             file={invoice}
             onFile={setInvoice}
             accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-            hint="PDF, PNG or JPG, optional — your client can open it"
+            hint={
+              editing && material.invoice_name
+                ? `Attached: ${material.invoice_name}. Choosing one replaces it.`
+                : "PDF, PNG or JPG, optional — your client can open it"
+            }
             disabled={busy}
           />
         </Labelled>
@@ -419,7 +552,7 @@ function AddMaterialForm({
       ) : null}
 
       <FormActions
-        submitLabel="Add material"
+        submitLabel={editing ? "Save changes" : "Add material"}
         busyLabel="Saving…"
         busy={busy}
         disabled={!form.name.trim()}

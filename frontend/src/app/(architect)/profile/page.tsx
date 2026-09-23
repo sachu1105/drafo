@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProfileCard } from "@/components/ProfileCard";
 import { ImagePicker } from "@/components/architect/ImagePicker";
+import { TaxRateField } from "@/components/architect/TaxRateField";
 import { ApiError } from "@/lib/api";
 import { me, sendEmailVerification, updateProfile } from "@/lib/auth";
 import type { Architect, ProfileCard as Card } from "@/lib/types";
@@ -78,6 +79,12 @@ type Draft = {
   website: string;
   card_slug: string;
   card_is_public: boolean;
+  // --- billing: what gets stamped onto an invoice as it is raised ---
+  gstin: string;
+  billing_address: string;
+  bank_details: string;
+  default_tax_percent: string;
+  invoice_terms: string;
 };
 
 function draftOf(architect: Architect): Draft {
@@ -91,6 +98,14 @@ function draftOf(architect: Architect): Draft {
     website: architect.website,
     card_slug: architect.card_slug ?? "",
     card_is_public: architect.card_is_public,
+    gstin: architect.gstin,
+    billing_address: architect.billing_address,
+    bank_details: architect.bank_details,
+    // The API sends "18.00" and the box should not say that back.
+    default_tax_percent: architect.default_tax_percent
+      ? String(Number(architect.default_tax_percent))
+      : "",
+    invoice_terms: architect.invoice_terms,
   };
 }
 
@@ -223,6 +238,12 @@ export default function ProfilePage() {
     payload.append("website", draft.website.trim());
     payload.append("card_slug", tidySlug(draft.card_slug.trim().toLowerCase()));
     payload.append("card_is_public", String(draft.card_is_public));
+    payload.append("gstin", draft.gstin.trim());
+    payload.append("billing_address", draft.billing_address.trim());
+    payload.append("bank_details", draft.bank_details.trim());
+    // Empty means the practice charges none. The serializer reads "" as null.
+    payload.append("default_tax_percent", draft.default_tax_percent.trim());
+    payload.append("invoice_terms", draft.invoice_terms.trim());
     if (avatarFile) payload.append("avatar", avatarFile);
     else if (dropAvatar) payload.append("remove_avatar", "true");
     if (logoFile) payload.append("logo", logoFile);
@@ -350,7 +371,7 @@ export default function ProfilePage() {
                 rows={3}
                 maxLength={BIO_LIMIT}
                 placeholder="A few lines on what you do and who you do it for."
-                className="field mt-2 resize-y"
+                className="field mt-2"
               />
               <span className="mt-1 flex items-baseline justify-between gap-4">
                 <span className="text-[0.8125rem] text-ink">
@@ -491,6 +512,104 @@ export default function ProfilePage() {
               maxBytes={LOGO_MAX}
               error={fieldErrors.logo}
             />
+          </FoldPanel>
+
+          {/* --- billing -------------------------------------------------
+              Folded shut like the practice panel, and for the same reason:
+              it is filled in once and then never looked at again. It is here
+              rather than on the invoice form because these answers are the
+              same on every invoice, and a field that is retyped every time is
+              a field that eventually disagrees with itself -- on a document
+              that is a tax record. */}
+          <FoldPanel
+            title="Billing"
+            summary={
+              draft.gstin
+                ? `Invoices go out under ${draft.practice_name || "your practice"}, GSTIN ${draft.gstin}.`
+                : "Your GST number, billing address and bank details, for the top and bottom of an invoice."
+            }
+            forceOpen={Boolean(fieldErrors.gstin || fieldErrors.default_tax_percent)}
+          >
+            <div className="grid gap-6 sm:grid-cols-2">
+              <Field
+                label="GSTIN"
+                hint="Left blank if you are not registered."
+                value={draft.gstin}
+                error={fieldErrors.gstin}
+                name="gstin"
+                onChange={(value) => set("gstin", value.toUpperCase())}
+                placeholder="32AAAAA0000A1Z5"
+                maxLength={20}
+              />
+
+              {/* Chosen, not typed. The rates are already in the database,
+                  and a mistyped rate is wrong arithmetic on a document
+                  somebody files for their accountant. */}
+              <label className="flex h-full flex-col" data-field="default_tax_percent">
+                <span className="eyebrow block">Default tax rate</span>
+                <span className="mt-1 block text-[0.8125rem] text-faint">
+                  What a new invoice line starts at.
+                </span>
+                <span className="mt-auto block">
+                  <TaxRateField
+                    value={draft.default_tax_percent}
+                    onChange={(percent) => set("default_tax_percent", percent)}
+                    noneLabel="No tax"
+                  />
+                </span>
+                {fieldErrors.default_tax_percent ? (
+                  <span role="alert" className="mt-1 block text-[0.8125rem] text-ink">
+                    {fieldErrors.default_tax_percent}
+                  </span>
+                ) : null}
+              </label>
+            </div>
+
+            <label className="block">
+              <span className="eyebrow block">Billing address</span>
+              <span className="mt-1 block text-[0.8125rem] text-faint">
+                Your registered address, which is often not the studio people
+                visit.
+              </span>
+              <textarea
+                value={draft.billing_address}
+                onChange={(event) => set("billing_address", event.target.value)}
+                rows={3}
+                placeholder={"12 Marine Drive\nKochi, Kerala 682031"}
+                className="field mt-2"
+              />
+            </label>
+
+            <label className="block">
+              <span className="eyebrow block">Payment information</span>
+              <span className="mt-1 block text-[0.8125rem] text-faint">
+                Printed at the foot of every invoice. Whatever shape your bank
+                uses.
+              </span>
+              <textarea
+                value={draft.bank_details}
+                onChange={(event) => set("bank_details", event.target.value)}
+                rows={3}
+                placeholder={
+                  "Bank: HDFC Bank, Ernakulam\nA/c: 0123 4567 8901\nIFSC: HDFC0000123"
+                }
+                className="field mt-2"
+              />
+            </label>
+
+            <label className="block">
+              <span className="eyebrow block">Terms</span>
+              <span className="mt-1 block text-[0.8125rem] text-faint">
+                Copied onto each new invoice, where it can still be changed.
+              </span>
+              <textarea
+                value={draft.invoice_terms}
+                onChange={(event) => set("invoice_terms", event.target.value)}
+                rows={2}
+                placeholder="Payable within 14 days."
+                className="field mt-2"
+              />
+            </label>
           </FoldPanel>
 
           {/* --- the card ----------------------------------------------- */}
@@ -658,7 +777,16 @@ function Field({
   onChange: (value: string) => void;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
   return (
-    <label className="block" data-field={name}>
+    /* A column with the box pushed to the bottom of it.
+     *
+     * Two of these side by side in a grid used to sit at different heights
+     * whenever their hints wrapped to a different number of lines -- a
+     * one-line hint next to a two-line one put the boxes twenty pixels out.
+     * Trimming the wording to match would fix it until somebody edited the
+     * wording. `mt-auto` fixes it for good: the label sits at the top of its
+     * cell, the box at the bottom, and a row of them lines up whatever the
+     * hints do. */
+    <label className="flex h-full flex-col" data-field={name}>
       <span className="eyebrow block">{label}</span>
       {hint ? (
         <span className="mt-1 block text-[0.8125rem] text-faint">{hint}</span>
@@ -669,7 +797,7 @@ function Field({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-invalid={Boolean(error)}
-        className={`field mt-2 ${error ? "border-ink" : ""}`}
+        className={`field mt-auto ${error ? "border-ink" : ""}`}
       />
       {error ? (
         <span role="alert" className="mt-1 block text-[0.8125rem] text-ink">

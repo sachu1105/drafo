@@ -141,6 +141,58 @@ named, so an account that never fills it in behaves exactly as it did before.
 That page is still private settings. There is no directory and no discovery
 anywhere in this product.
 
+### Invoices and estimates
+
+An architect raises a bill from the Payments tab, under the payment stages —
+"what have I billed" and "what am I owed" are the same question, so they are on
+the same screen. Lines are picked from the project's milestones and priced
+materials, or typed by hand, and each carries its own tax rate: a design fee at
+18% and a reimbursed printing charge at nil go on the same bill routinely.
+
+**An estimate and an invoice are one model with two number series.** `EST-0001`
+and `INV-0001`, both per practice rather than per project, because a client
+asking "which invoice is this" needs an answer unique across the business.
+Converting an accepted estimate copies its lines into a new invoice and leaves
+the estimate standing — the client was sent a URL showing an estimate, and that
+URL has to keep showing the estimate they agreed to.
+
+**The invoice is a stamp, not a view.** The practice name, its billing address
+and GSTIN, the client's details and the terms are all *copied* onto the invoice
+when it is raised, and never refreshed. If they rendered from the live profile,
+moving office next year would silently restate every invoice already issued,
+including ones a client has paid and filed. For the same reason
+`InvoiceLine.tax_percent` stores the number rather than pointing at `TaxRate`:
+an invoice raised at 18% still says 18% after the slab changes.
+
+**Lines are copied from milestones and materials, never linked to them.** A
+stage agreed at ₹20,000 being billed at ₹18,000 this month is ordinary, and a
+builder that wrote the ₹18,000 back into the project would corrupt the plan the
+client agreed to. The `milestone` and `material` foreign keys exist only so the
+picker can say a stage has been billed already, and are `SET_NULL` so deleting
+a milestone never deletes the invoice that billed for it.
+
+**Totals are summed from the lines every time, never stored.** A stored total
+that disagrees with its own lines is the worst thing an invoice can do, and the
+only way to guarantee it cannot happen is to have nowhere to keep the
+disagreement. The API refuses a posted total for the same reason.
+
+**Each invoice carries its own token**, at `/i/<token>` — not the project's.
+Sending somebody a bill must not hand them the drawings. A draft returns 404 on
+that link until it is sent, so a bill can be built over two sittings without a
+client refreshing into a half-finished document.
+
+**There is no PDF renderer.** The invoice page *is* the PDF: it is laid out for
+A4 in the print stylesheet and the browser's own engine writes the file. A
+server-side renderer would be a second implementation of the same document,
+with its own fonts and its own bugs, and the day the two disagree is the day a
+client is holding a PDF that says something the page does not.
+
+**Tax settings are per practice, not per install.** GSTIN, billing address,
+bank details, default rate and terms live on the architect's profile under
+Billing, because GST registration is a fact about a business. Only the rate
+*card* — the slabs offered in the dropdown — is shared, as `TaxRate` rows in the
+admin beside Units.
+
 ### The profile card
 
 `/c/<slug>` is the one page here that anyone may open — a digital business
@@ -312,9 +364,24 @@ judge features.
   state and nothing else.
 - The drawings are the only things on screen with visual weight.
 - Animation is opacity and a 4px translate, under 200ms. Nothing bounces.
-- **A material can carry its invoice.** `photo` is what the tile looks like,
-  `invoice` is what was paid for it — a PDF an ImageField will not take, and
-  the one a client is actually looking for a year later. Served through the
+- **A material is several pictures, not one.** A tile is a colour, a finish, an
+  edge, and how it reads laid across a whole floor, and one photograph answers
+  about one of those. `MaterialPhoto` rows hang off the material in an explicit
+  order, up to eight; the first is the thumbnail everywhere. The client swipes
+  through them in the card with native scroll snapping, with dots underneath —
+  a photograph that fills the frame gives no clue that three more are behind
+  it, and the row carries a count badge for the same reason.
+- **Units are a table, not an enum.** A material's price is quoted per
+  something, and this trade has a long tail of it — per running foot, per bag,
+  per brass. `Unit` rows are edited in the admin under **Units**, so adding one
+  never needs a deploy; untick Active to retire one without losing the
+  materials priced in it. `Material.unit` stays free text and is deliberately
+  *not* a foreign key: the list is a set of suggestions, an architect typing
+  something nobody anticipated must never be stopped, and nothing in the admin
+  can rewrite a unit already recorded against a material.
+- **A material can carry its invoice.** The photos are what the tile looks
+  like, `invoice` is what was paid for it — a PDF an ImageField will not take,
+  and the one a client is actually looking for a year later. Served through the
   same token-checked view as everything else, so the bill is no more public
   than the drawings.
 - **Notes are announced where they can be seen.** A note lives against a

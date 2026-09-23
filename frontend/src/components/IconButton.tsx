@@ -4,10 +4,16 @@ import type { LucideIcon } from "lucide-react";
  * An action with no words on it.
  *
  * A labelled action costs a row half its width, and in a list the same word
- * repeats down the page saying nothing new. An icon costs nothing until it is
- * needed -- but only if it can be asked what it does, so the label is not
- * optional here. It is the accessible name and the tooltip both, and there is
- * no way to construct one of these without it.
+ * repeats down the page saying nothing new. So the label is not written on
+ * the button -- but it is still required here, because it is the accessible
+ * name and there is no way to construct one of these without it.
+ *
+ * It used to be drawn as a tooltip on hover as well. Two of these sit side by
+ * side at the end of a material row, and the second tooltip opened across the
+ * first: a black slab reading "Ed" against "Remove 600x600". Widening them or
+ * flipping their alignment only moves which pair collides. A round icon at
+ * the end of a row is already understood without being narrated, so the
+ * tooltip is gone and the accessible name stays.
  *
  * Round, and the only round thing in a list of square ones. That is the rule
  * the interface follows: surfaces are drawn square, because the product is
@@ -55,20 +61,11 @@ export function IconButton({
         <Icon size={16} strokeWidth={1.75} aria-hidden />
       </span>
 
-      <span
-        aria-hidden
-        className="pointer-events-none absolute bottom-full right-0 mb-1.5 hidden
-                   whitespace-nowrap rounded-full bg-ink px-2.5 py-1 text-[0.75rem]
-                   leading-none text-paper shadow-menu
-                   group-hover:block group-focus-visible:block"
-      >
-        {label}
-      </span>
     </>
   );
 
   const frame =
-    "group relative inline-flex h-11 w-11 shrink-0 items-center justify-center " +
+    "group inline-flex h-11 w-11 shrink-0 items-center justify-center " +
     "focus-visible:outline-none";
 
   if (href) {

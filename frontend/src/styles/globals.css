@@ -70,6 +70,19 @@
     @apply text-label font-medium uppercase text-faint;
   }
 
+  /* A horizontal strip you swipe. The bar is chrome the page did not ask
+     for: on a phone it is not there anyway, and on a desktop it sits across
+     the bottom of the photograph it is scrolling. Position is reported by
+     the dots underneath instead. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .rule-top {
     @apply border-t border-rule;
   }
@@ -79,14 +92,23 @@
            placeholder:text-faint focus:border-brand focus:outline-none;
   }
 
-  /* A select that matches the inputs beside it. The native control renders
-     with the OS chrome -- rounded on macOS, beveled on Windows -- and sitting
-     in a row of square fields it is the one thing that looks borrowed. */
-  .select {
-    @apply field cursor-pointer appearance-none bg-no-repeat pr-10;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%237E8878' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E");
-    background-position: right 0.875rem center;
-    background-size: 12px 12px;
+  /* The drag handle a browser paints into the corner of every textarea is the
+     one piece of chrome on these forms that nobody put there. It is a stack
+     of diagonal scratches sitting inside a hairline box, it appears in six
+     places, and it is the only thing on the page drawn in the operating
+     system's idea of a border.
+     
+     It also solves a problem this form does not have. `field-sizing: content`
+     grows the box as the writing does, which is what the handle was for, and
+     does it without asking anybody to drag anything. Where that is not
+     supported yet the box keeps the height its `rows` asks for and scrolls,
+     which is what it did before -- minus the scratches. */
+  textarea.field {
+    resize: none;
+    field-sizing: content;
+    /* A note the length of an essay should not push the save button off the
+       bottom of the screen. */
+    max-height: 60vh;
   }
 
   /* An input with a fixed prefix or suffix welded to it -- a currency mark, a
@@ -196,5 +218,51 @@
   }
   to {
     transform: scaleX(1);
+  }
+}
+
+/**
+ * Print.
+ *
+ * Only the invoice page is ever printed on purpose, and when it is, the file
+ * the client keeps has to be the document and nothing around it. So the page
+ * furniture comes off, the paper goes white, and the sage-on-cream palette --
+ * which is right on a screen and muddy through a laser printer -- is dropped
+ * back to ink on white.
+ *
+ * A table row that breaks across two sheets leaves half a line on each, so
+ * rows are kept whole and the header repeats on the second page.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  /* Backgrounds are not printed by default anyway; saying so keeps the
+     on-screen card from leaving a grey cast on printers that do. */
+  .bg-card,
+  .bg-paper,
+  .bg-sand {
+    background: transparent !important;
+  }
+
+  tr,
+  img {
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  a[href]::after {
+    content: "";
   }
 }

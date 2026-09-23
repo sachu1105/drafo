@@ -24,7 +24,11 @@ from .models import (
     DrawingVersion,
     Material,
     Milestone,
+    Invoice,
+    InvoiceLine,
     Project,
+    TaxRate,
+    Unit,
 )
 
 
@@ -234,3 +238,72 @@ class MilestoneAdmin(admin.ModelAdmin):
     list_select_related = ("project",)
     list_filter = ("is_paid", "project__architect")
     search_fields = ("title", "project__name")
+
+
+@admin.register(Unit)
+class UnitAdmin(admin.ModelAdmin):
+    """The unit list offered in the materials form.
+
+    Editable here because the trade has a long tail -- per running foot, per
+    bag, per brass -- and a list fixed in code means a deploy every time
+    somebody needs one. Nothing here constrains what an architect can type:
+    `Material.unit` is free text, so this is a set of suggestions.
+
+    Retire a unit by unticking Active rather than deleting it. Deleting is
+    allowed, but the materials already priced in that unit keep the words
+    either way -- nothing is rewritten.
+    """
+
+    list_display = ("label", "order", "is_active")
+    list_editable = ("order", "is_active")
+    list_display_links = ("label",)
+    ordering = ("order", "label")
+    search_fields = ("label",)
+
+
+@admin.register(TaxRate)
+class TaxRateAdmin(admin.ModelAdmin):
+    """The rates offered when an invoice line is priced.
+
+    Shared by every practice on the install, because a GST slab is the same
+    number for all of them. What is *not* shared, and lives on each practice's
+    own profile, is their GSTIN and which rate they start at -- registration
+    is a fact about a business, not about this server.
+
+    Changing a rate here never restates an invoice already raised: a line
+    stores the percentage it was charged at, not a pointer to this table.
+    """
+
+    list_display = ("label", "percent", "order", "is_active")
+    list_editable = ("percent", "order", "is_active")
+    list_display_links = ("label",)
+    ordering = ("order", "percent")
+
+
+class InvoiceLineInline(admin.TabularInline):
+    model = InvoiceLine
+    extra = 0
+    fields = ("order", "description", "quantity", "unit", "rate", "tax_percent")
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    """Support's view of a bill. Read the numbers, do not retype them.
+
+    The billing details on an invoice are a stamp taken the day it was raised,
+    not a window onto the practice's profile, so editing them here rewrites a
+    document somebody may already have paid against. They are editable because
+    a genuine mistake has to be fixable somewhere -- but that is the only
+    reason, and it is not a routine thing to do.
+    """
+
+    list_display = ("number", "kind", "status", "to_name", "issued_on", "money")
+    list_filter = ("kind", "status", "issued_on")
+    search_fields = ("number", "to_name", "project__name", "from_name")
+    date_hierarchy = "issued_on"
+    readonly_fields = ("access_token", "created_at", "updated_at", "money")
+    inlines = [InvoiceLineInline]
+
+    @admin.display(description="Total")
+    def money(self, obj):
+        return obj.total

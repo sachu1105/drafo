@@ -11,12 +11,7 @@ const LINKS = [
   { href: "#client", label: "For your client" },
 ];
 
-/**
- * The public bar.
- *
- * If there is already a session, the two auth buttons collapse into one that
- * goes straight to work -- somebody who is signed in has no use for "Sign in".
- */
+
 export function MarketingNav() {
   const [signedIn, setSignedIn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);

@@ -96,7 +96,7 @@ export default function NewProjectPage() {
             value={form.address}
             onChange={set("address")}
             rows={3}
-            className="field resize-y"
+            className="field"
           />
         </Field>
 

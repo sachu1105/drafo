@@ -9,6 +9,7 @@ import {
   Labelled,
   MoneyInput,
 } from "@/components/architect/Form";
+import { InvoicesPanel } from "@/components/architect/InvoicesPanel";
 import { api } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Milestone } from "@/lib/types";
@@ -148,6 +149,11 @@ export function PaymentsTab({
           </ul>
         )}
       </div>
+
+      {/* Billing sits under the stages, not in a tab of its own: "what have I
+          billed" and "what am I owed" are the same question, and splitting
+          them puts half the answer one click away. */}
+      <InvoicesPanel projectId={projectId} milestones={list} />
     </div>
   );
 }

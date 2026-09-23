@@ -25,9 +25,14 @@ from .models import (
     Comment,
     DrawingSet,
     DrawingVersion,
+    Invoice,
+    InvoiceLine,
     Material,
+    MaterialPhoto,
     Milestone,
     Project,
+    TaxRate,
+    Unit,
 )
 
 PDF_MAGIC = b"%PDF-"
@@ -183,6 +188,12 @@ class ArchitectSerializer(serializers.ModelSerializer):
             "card_slug",
             "card_url",
             "card_is_public",
+            # billing
+            "gstin",
+            "billing_address",
+            "bank_details",
+            "default_tax_percent",
+            "invoice_terms",
             "is_staff",
         )
         read_only_fields = (
@@ -243,10 +254,24 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             "cover",
             "card_slug",
             "card_is_public",
+            # billing: what goes at the top of an invoice
+            "gstin",
+            "billing_address",
+            "bank_details",
+            "default_tax_percent",
+            "invoice_terms",
             "remove_logo",
             "remove_avatar",
             "remove_cover",
         )
+
+    # Multipart has no null. An architect clearing the default rate box means
+    # "we charge none", and a DecimalField refuses "".
+    def to_internal_value(self, data):
+        if hasattr(data, "getlist") and data.get("default_tax_percent", None) == "":
+            data = data.copy()
+            data["default_tax_percent"] = None
+        return super().to_internal_value(data)
 
     def validate_practice_name(self, value: str) -> str:
         value = value.strip()
@@ -605,8 +630,41 @@ class DrawingSetDetailSerializer(DrawingSetSerializer):
 # --------------------------------------------------------------------------
 
 
+MAX_MATERIAL_PHOTO_MB = 8
+MATERIAL_PHOTO_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+# Enough for a tile from four angles and the room it went into. The cap is
+# here so that a phone's "select all" in the gallery cannot put ninety
+# pictures behind one line in a client's list.
+MAX_MATERIAL_PHOTOS = 8
+
+
+class MaterialPhotoSerializer(serializers.ModelSerializer):
+    """One picture, as a URL the caller is allowed to fetch.
+
+    The stored path is never exposed. Like every other file in this product
+    the bytes come back through a view that has already checked the token or
+    the session, so a copied URL is worthless on its own.
+    """
+
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MaterialPhoto
+        fields = ("id", "url")
+
+    def get_url(self, obj) -> str:
+        token = self.context.get("token")
+        version = _file_version(obj.image)
+        if token:
+            return (
+                f"/api/p/{token}/materials/{obj.material_id}"
+                f"/photos/{obj.pk}/?v={version}"
+            )
+        return f"/api/materials/{obj.material_id}/photos/{obj.pk}/?v={version}"
+
+
 class MaterialSerializer(serializers.ModelSerializer):
-    photo_url = serializers.SerializerMethodField()
+    photos = MaterialPhotoSerializer(many=True, read_only=True)
     invoice_url = serializers.SerializerMethodField()
     category_label = serializers.CharField(
         source="get_category_display", read_only=True
@@ -620,8 +678,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "category_label",
             "name",
             "brand",
-            "photo",
-            "photo_url",
+            "photos",
             "invoice",
             "invoice_url",
             "invoice_name",
@@ -634,23 +691,35 @@ class MaterialSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "created_at",
-            "photo_url",
+            "photos",
             "invoice_url",
             "invoice_name",
             "category_label",
         )
         extra_kwargs = {
-            "photo": {"write_only": True, "required": False},
             "invoice": {"write_only": True, "required": False},
         }
 
-    def get_photo_url(self, obj) -> str | None:
-        if not obj.photo:
-            return None
-        token = self.context.get("token")
-        if token:
-            return f"/api/p/{token}/materials/{obj.pk}/photo/"
-        return f"/api/materials/{obj.pk}/photo/"
+    # Fields a multipart form has no way to send as null. An edit that clears
+    # the price box means "no price", but multipart can only send "", which a
+    # DecimalField refuses. Emptying a box has to be able to empty the field,
+    # or a price typed by mistake is permanent.
+    NULLABLE_ON_EMPTY = ("price", "selected_at")
+
+    def to_internal_value(self, data):
+        if hasattr(data, "getlist"):
+            blanked = {
+                field: None
+                for field in self.NULLABLE_ON_EMPTY
+                if data.get(field, None) == ""
+            }
+            if blanked:
+                # copy(), not dict(): dict() collapses a repeated key to its
+                # last value, and `photos` arrives as a repeated key.
+                data = data.copy()
+                for field, value in blanked.items():
+                    data[field] = value
+        return super().to_internal_value(data)
 
     def get_invoice_url(self, obj) -> str | None:
         if not obj.invoice:
@@ -676,17 +745,87 @@ class MaterialSerializer(serializers.ModelSerializer):
             )
         return upload
 
+    # --- the gallery -----------------------------------------------------
+    #
+    # Several files arrive under one repeated `photos` key, which a
+    # ModelSerializer field cannot read: a QueryDict hands back only the last
+    # value unless asked for the list. So the uploads are pulled off the
+    # request, validated as a group, and written as rows once the material
+    # itself exists.
+
+    def _incoming_photos(self) -> list:
+        request = self.context.get("request")
+        if request is None or not hasattr(request, "FILES"):
+            return []
+        return request.FILES.getlist("photos")
+
+    def validate(self, attrs):
+        uploads = self._incoming_photos()
+        if not uploads:
+            return attrs
+
+        already = self.instance.photos.count() if self.instance else 0
+        if already + len(uploads) > MAX_MATERIAL_PHOTOS:
+            raise serializers.ValidationError(
+                {
+                    "photos": (
+                        f"That is more than {MAX_MATERIAL_PHOTOS} pictures for one "
+                        "material. Pick the ones that show it best."
+                    )
+                }
+            )
+        for upload in uploads:
+            _check_image(
+                upload,
+                label="picture",
+                max_mb=MAX_MATERIAL_PHOTO_MB,
+                extensions=MATERIAL_PHOTO_EXTENSIONS,
+            )
+        return attrs
+
+    def _save_photos(self, material) -> None:
+        uploads = self._incoming_photos()
+        if not uploads:
+            return
+        # Appending, not replacing: an update that sends two more pictures
+        # means two more pictures.
+        start = material.photos.count()
+        # One create() each rather than bulk_create: writing the bytes to
+        # storage is FileField's business during save, and eight rows is not
+        # a number worth being clever about.
+        for index, upload in enumerate(uploads):
+            MaterialPhoto.objects.create(
+                material=material, image=upload, order=start + index
+            )
+
     def create(self, validated_data):
         upload = validated_data.get("invoice")
         if upload is not None:
             validated_data["invoice_name"] = (upload.name or "invoice")[:255]
-        return super().create(validated_data)
+        material = super().create(validated_data)
+        self._save_photos(material)
+        return material
 
     def update(self, instance, validated_data):
         upload = validated_data.get("invoice")
         if upload is not None:
             validated_data["invoice_name"] = (upload.name or "invoice")[:255]
-        return super().update(instance, validated_data)
+        material = super().update(instance, validated_data)
+        self._save_photos(material)
+        return material
+
+
+class UnitSerializer(serializers.ModelSerializer):
+    """The suggestion list behind the unit box. Read-only over the API.
+
+    Units are managed in the Django admin, not by architects: the list is
+    shared by every practice on the install, and a box that quietly added
+    whatever anyone typed would be a list of typos within a month.
+    """
+
+    class Meta:
+        model = Unit
+        fields = ("id", "label")
 
 
 class MilestoneSerializer(serializers.ModelSerializer):
@@ -795,3 +934,236 @@ class ClientProjectSerializer(serializers.ModelSerializer):
         return MilestoneSerializer(
             obj.milestones.all(), many=True, context=self.context
         ).data
+
+
+# --------------------------------------------------------------------------
+# invoices
+# --------------------------------------------------------------------------
+
+
+class TaxRateSerializer(serializers.ModelSerializer):
+    """The rate card behind the tax dropdown. Managed in the Django admin."""
+
+    class Meta:
+        model = TaxRate
+        fields = ("id", "label", "percent")
+
+
+class InvoiceLineSerializer(serializers.ModelSerializer):
+    """One row. The money is computed here and never accepted from outside.
+
+    `amount`, `tax_amount` and `total` are read-only on purpose. A client that
+    could post its own total could post one that disagrees with its own
+    figures, and an invoice whose arithmetic does not add up is worse than no
+    invoice at all.
+    """
+
+    amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    tax_amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    total = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = InvoiceLine
+        fields = (
+            "id",
+            "description",
+            "quantity",
+            "unit",
+            "rate",
+            "tax_percent",
+            "order",
+            "milestone",
+            "material",
+            "amount",
+            "tax_amount",
+            "total",
+        )
+
+    def validate_description(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Every line needs a description.")
+        return value
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    """An invoice and all of its lines, written in one request.
+
+    Nested writes rather than a line endpoint. An invoice is edited as a whole
+    -- add a row, change a rate, drop a row, save -- and a per-line API would
+    turn one save into five requests with no transaction around them, leaving
+    a half-edited bill on screen the moment one of them failed.
+    """
+
+    lines = InvoiceLineSerializer(many=True)
+    subtotal = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    tax_total = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    total = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    client_url = serializers.CharField(read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = (
+            "id",
+            "kind",
+            "kind_label",
+            "status",
+            "status_label",
+            "number",
+            "issued_on",
+            "due_on",
+            "from_name",
+            "from_address",
+            "from_gstin",
+            "from_phone",
+            "from_email",
+            "from_bank",
+            "to_name",
+            "to_address",
+            "to_phone",
+            "to_email",
+            "to_gstin",
+            "notes",
+            "terms",
+            "lines",
+            "subtotal",
+            "tax_total",
+            "total",
+            "client_url",
+            "project_name",
+            "created_at",
+        )
+        read_only_fields = ("id", "number", "created_at", "client_url")
+        # The practice's own details and the issue date are stamped on by the
+        # view after validation, from the profile and the project. The form
+        # does not send them, so the serializer must not insist on them --
+        # while still accepting them when a particular bill needs a different
+        # client address from the one on the project.
+        extra_kwargs = {
+            field: {"required": False}
+            for field in ("from_name", "to_name", "issued_on")
+        }
+
+    def validate_lines(self, value):
+        if not value:
+            raise serializers.ValidationError("An invoice needs at least one line.")
+        return value
+
+    def _write_lines(self, invoice, lines) -> None:
+        # Replaced wholesale rather than diffed. The form sends the invoice as
+        # it should now read, and matching rows up by id to work out which
+        # three changed is a lot of machinery for a document with six lines.
+        invoice.lines.all().delete()
+        InvoiceLine.objects.bulk_create(
+            [
+                InvoiceLine(invoice=invoice, **{**line, "order": index})
+                for index, line in enumerate(lines)
+            ]
+        )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        lines = validated_data.pop("lines")
+        invoice = Invoice.objects.create(**validated_data)
+        self._write_lines(invoice, lines)
+        return invoice
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        lines = validated_data.pop("lines", None)
+        invoice = super().update(instance, validated_data)
+        if lines is not None:
+            self._write_lines(invoice, lines)
+        return invoice
+
+
+class InvoiceListSerializer(serializers.ModelSerializer):
+    """The invoice as a row in a list: enough to find it, not enough to print."""
+
+    total = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    client_url = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = (
+            "id",
+            "kind",
+            "kind_label",
+            "status",
+            "status_label",
+            "number",
+            "issued_on",
+            "due_on",
+            "to_name",
+            "total",
+            "client_url",
+        )
+
+
+class ClientInvoiceSerializer(serializers.ModelSerializer):
+    """The invoice as the person paying it reads it.
+
+    Narrower than the architect's view on purpose: no status, no id, and
+    nothing that would let it be edited from the outside. What is left is the
+    document.
+    """
+
+    lines = InvoiceLineSerializer(many=True, read_only=True)
+    subtotal = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    tax_total = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    total = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True)
+    logo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invoice
+        fields = (
+            "kind",
+            "kind_label",
+            "number",
+            "issued_on",
+            "due_on",
+            "from_name",
+            "from_address",
+            "from_gstin",
+            "from_phone",
+            "from_email",
+            "from_bank",
+            "to_name",
+            "to_address",
+            "to_phone",
+            "to_email",
+            "to_gstin",
+            "notes",
+            "terms",
+            "lines",
+            "subtotal",
+            "tax_total",
+            "total",
+            "project_name",
+            "logo_url",
+        )
+
+    def get_logo_url(self, obj) -> str | None:
+        architect = obj.project.architect
+        if not architect.logo:
+            return None
+        return f"/api/i/{obj.access_token}/logo/?v={_logo_version(architect)}"

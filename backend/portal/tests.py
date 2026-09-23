@@ -9,9 +9,11 @@ telling the caller that a project exists, and an approval that does not stick.
 from __future__ import annotations
 
 import io
+import json
 import shutil
 import tempfile
 from datetime import timedelta
+from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -21,7 +23,18 @@ from django.utils import timezone
 from django.test.client import BOUNDARY, MULTIPART_CONTENT, encode_multipart
 from django.test import TestCase, override_settings
 
-from .models import Approval, DrawingSet, DrawingVersion, Project
+from .models import (
+    Approval,
+    DrawingSet,
+    DrawingVersion,
+    Material,
+    Invoice,
+    MaterialPhoto,
+    Milestone,
+    Project,
+    TaxRate,
+    Unit,
+)
 
 Architect = get_user_model()
 
@@ -1103,17 +1116,16 @@ class MaterialInvoiceTests(MediaSandbox):
             self.client.get(f"/api/materials/{body['id']}/invoice/").status_code, 404
         )
 
-    def test_photo_and_invoice_are_different_files(self):
+    def test_photos_and_invoice_are_different_files(self):
         body = self.add_material(
-            photo=SimpleUploadedFile("tile.png", PNG, content_type="image/png"),
+            photos=SimpleUploadedFile("tile.png", PNG, content_type="image/png"),
             invoice=SimpleUploadedFile("bill.pdf", PDF, content_type="application/pdf"),
         ).json()
-        self.assertIsNotNone(body["photo_url"])
+        self.assertEqual(len(body["photos"]), 1)
         self.assertIsNotNone(body["invoice_url"])
-        self.assertNotEqual(body["photo_url"], body["invoice_url"])
-        self.assertEqual(
-            self.client.get(body["photo_url"])["Content-Type"], "image/png"
-        )
+        photo_url = body["photos"][0]["url"]
+        self.assertNotEqual(photo_url, body["invoice_url"])
+        self.assertEqual(self.client.get(photo_url)["Content-Type"], "image/png")
         self.assertEqual(
             self.client.get(body["invoice_url"])["Content-Type"], "application/pdf"
         )
@@ -1275,12 +1287,11 @@ class ContentTypeTests(MediaSandbox):
             data={
                 "category": "flooring",
                 "name": "Tile",
-                "photo": SimpleUploadedFile("tile.png", PNG, content_type="image/png"),
+                "photos": SimpleUploadedFile("tile.png", PNG, content_type="image/png"),
             },
         )
         self.assertEqual(response.status_code, 201, response.content)
-        photo_url = response.json()["photo_url"]
-        served = self.client.get(photo_url)
+        served = self.client.get(response.json()["photos"][0]["url"])
         self.assertEqual(served.status_code, 200)
         self.assertEqual(served["Content-Type"], "image/png")
 
@@ -1349,3 +1360,513 @@ class ReferrerPolicyTests(MediaSandbox):
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/django-admin/")
+
+
+class MaterialGalleryTests(MediaSandbox):
+    """A material is several pictures, and the client can see all of them."""
+
+    def setUp(self):
+        super().setUp()
+        self.architect = make_architect("anna@studio.example", "Anna Mathew Architects")
+        self.client.force_login(self.architect)
+        self.project = Project.objects.create(
+            architect=self.architect, name="Villa", client_name="Mr K"
+        )
+
+    def picture(self, name="tile.png"):
+        return SimpleUploadedFile(name, PNG, content_type="image/png")
+
+    def add(self, count=3, **extra):
+        data = {"category": "flooring", "name": "Vitrified tile"}
+        data.update(extra)
+        if count:
+            data["photos"] = [self.picture(f"tile{n}.png") for n in range(count)]
+        return self.client.post(
+            f"/api/projects/{self.project.pk}/materials/", data=data
+        )
+
+    def test_several_pictures_arrive_in_one_post(self):
+        response = self.add(count=3)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(len(response.json()["photos"]), 3)
+
+    def test_they_keep_the_order_they_were_sent_in(self):
+        """The first one becomes the thumbnail, so the order is a decision."""
+        body = self.add(count=3).json()
+        material = Material.objects.get(pk=body["id"])
+        self.assertEqual(
+            list(material.photos.values_list("order", flat=True)), [0, 1, 2]
+        )
+
+    def test_every_picture_is_served(self):
+        for photo in self.add(count=3).json()["photos"]:
+            served = self.client.get(photo["url"])
+            self.assertEqual(served.status_code, 200)
+            self.assertEqual(served["Content-Type"], "image/png")
+
+    def test_a_material_can_have_none(self):
+        self.assertEqual(self.add(count=0).json()["photos"], [])
+
+    def test_more_pictures_are_appended_not_replaced(self):
+        body = self.add(count=2).json()
+        self.client.patch(
+            f"/api/materials/{body['id']}/",
+            data=encode_multipart(BOUNDARY, {"photos": [self.picture()]}),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.assertEqual(Material.objects.get(pk=body["id"]).photos.count(), 3)
+
+    def test_too_many_is_refused_and_nothing_is_written(self):
+        response = self.add(count=9)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Material.objects.count(), 0)
+
+    def test_a_picture_can_be_removed_on_its_own(self):
+        body = self.add(count=3).json()
+        gone = body["photos"][1]["url"].split("?")[0]
+        self.assertEqual(self.client.delete(gone).status_code, 204)
+        self.assertEqual(Material.objects.get(pk=body["id"]).photos.count(), 2)
+
+    def test_another_architect_cannot_open_or_delete_one(self):
+        url = self.add(count=1).json()["photos"][0]["url"].split("?")[0]
+        self.client.logout()
+        self.client.force_login(make_architect("other@studio.example", "Other"))
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.delete(url).status_code, 404)
+
+    def test_the_client_sees_every_picture_through_their_token(self):
+        self.add(count=3)
+        self.client.logout()
+
+        token = self.project.access_token
+        materials = self.client.get(f"/api/p/{token}/materials/").json()
+        self.assertEqual(len(materials[0]["photos"]), 3)
+
+        for photo in materials[0]["photos"]:
+            self.assertIn(f"/api/p/{token}/", photo["url"])
+            self.assertEqual(self.client.get(photo["url"]).status_code, 200)
+
+    def test_a_photo_url_from_another_project_is_a_404(self):
+        """The token in the URL is the credential, and it is checked."""
+        self.add(count=1)
+        other = Project.objects.create(
+            architect=self.architect, name="Other", client_name="Mrs B"
+        )
+        photo = Material.objects.get().photos.get()
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(
+                f"/api/p/{other.access_token}/materials/"
+                f"{photo.material_id}/photos/{photo.pk}/"
+            ).status_code,
+            404,
+        )
+
+    def test_deleting_the_material_takes_its_pictures_with_it(self):
+        body = self.add(count=3).json()
+        self.client.delete(f"/api/materials/{body['id']}/")
+        self.assertEqual(MaterialPhoto.objects.count(), 0)
+
+    def test_editing_keeps_the_pictures_that_were_not_touched(self):
+        body = self.add(count=2).json()
+        self.client.patch(
+            f"/api/materials/{body['id']}/",
+            data=encode_multipart(BOUNDARY, {"name": "Renamed"}),
+            content_type=MULTIPART_CONTENT,
+        )
+        material = Material.objects.get(pk=body["id"])
+        self.assertEqual(material.name, "Renamed")
+        self.assertEqual(material.photos.count(), 2)
+
+    def test_clearing_the_price_box_clears_the_price(self):
+        """Multipart cannot send null, so "" has to mean it."""
+        body = self.add(count=0, price="2000").json()
+        self.assertEqual(body["price"], "2000.00")
+
+        response = self.client.patch(
+            f"/api/materials/{body['id']}/",
+            data=encode_multipart(BOUNDARY, {"price": ""}),
+            content_type=MULTIPART_CONTENT,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(Material.objects.get(pk=body["id"]).price)
+
+    def test_a_blank_price_on_a_new_material_is_still_fine(self):
+        self.assertEqual(self.add(count=0, price="").status_code, 201)
+
+
+class UnitTests(MediaSandbox):
+    """The unit list is a suggestion, never a constraint."""
+
+    def setUp(self):
+        super().setUp()
+        self.architect = make_architect("anna@studio.example", "Anna Mathew Architects")
+        self.client.force_login(self.architect)
+        self.project = Project.objects.create(
+            architect=self.architect, name="Villa", client_name="Mr K"
+        )
+
+    def test_the_defaults_are_seeded(self):
+        labels = [unit["label"] for unit in self.client.get("/api/units/").json()]
+        self.assertIn("per sq ft", labels)
+        self.assertIn("lump sum", labels)
+
+    def test_they_come_back_in_the_order_set_in_the_admin(self):
+        response = self.client.get("/api/units/").json()
+        self.assertEqual(response[0]["label"], "per sq ft")
+
+    def test_a_retired_unit_is_no_longer_offered(self):
+        Unit.objects.filter(label="per roll").update(is_active=False)
+        labels = [unit["label"] for unit in self.client.get("/api/units/").json()]
+        self.assertNotIn("per roll", labels)
+
+    def test_a_retired_unit_does_not_change_what_was_recorded(self):
+        """Materials keep the words they were saved with, whatever the admin
+        does to the list afterwards."""
+        material = Material.objects.create(
+            project=self.project, category="flooring", name="Tile", unit="per roll"
+        )
+        Unit.objects.filter(label="per roll").delete()
+        material.refresh_from_db()
+        self.assertEqual(material.unit, "per roll")
+
+    def test_a_unit_that_is_not_on_the_list_is_still_accepted(self):
+        response = self.client.post(
+            f"/api/projects/{self.project.pk}/materials/",
+            data={"category": "flooring", "name": "Sand", "unit": "per brass"},
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["unit"], "per brass")
+
+    def test_the_list_needs_a_session(self):
+        self.client.logout()
+        self.assertIn(self.client.get("/api/units/").status_code, (401, 403))
+
+
+class InvoiceTests(MediaSandbox):
+    """A bill is a record of what was sent, not a view onto today's profile."""
+
+    def setUp(self):
+        super().setUp()
+        self.architect = make_architect("anna@studio.example", "Anna Mathew Architects")
+        self.architect.gstin = "32AAAAA0000A1Z5"
+        self.architect.billing_address = "12 Marine Drive, Kochi"
+        self.architect.bank_details = "Bank: HDFC\nA/c: 123456"
+        self.architect.invoice_terms = "Payable within 14 days."
+        self.architect.save()
+        self.client.force_login(self.architect)
+        self.project = Project.objects.create(
+            architect=self.architect,
+            name="Villa",
+            client_name="Mr K",
+            client_email="mrk@example.com",
+            address="9 Hill Road",
+        )
+
+    def body(self, **extra):
+        data = {
+            "kind": "invoice",
+            "lines": [
+                {"description": "Design fee", "quantity": "1", "rate": "50000", "tax_percent": "18"},
+                {"description": "Site visits", "quantity": "3", "rate": "2000", "tax_percent": "18"},
+            ],
+        }
+        data.update(extra)
+        return data
+
+    def create(self, **extra):
+        return self.client.post(
+            f"/api/projects/{self.project.pk}/invoices/",
+            data=json.dumps(self.body(**extra)),
+            content_type="application/json",
+        )
+
+    # --- the arithmetic ---------------------------------------------------
+
+    def test_the_totals_are_worked_out_from_the_lines(self):
+        body = self.create().json()
+        self.assertEqual(body["subtotal"], "56000.00")
+        self.assertEqual(body["tax_total"], "10080.00")
+        self.assertEqual(body["total"], "66080.00")
+
+    def test_a_posted_total_is_ignored(self):
+        """Nothing outside gets to say what an invoice adds up to."""
+        body = self.create(total="1.00", subtotal="1.00").json()
+        self.assertEqual(body["total"], "66080.00")
+
+    def test_lines_can_be_taxed_at_different_rates(self):
+        body = self.create(
+            lines=[
+                {"description": "Fee", "quantity": "1", "rate": "1000", "tax_percent": "18"},
+                {"description": "Reimbursement", "quantity": "1", "rate": "1000", "tax_percent": "0"},
+            ]
+        ).json()
+        self.assertEqual(body["tax_total"], "180.00")
+        self.assertEqual(body["total"], "2180.00")
+
+    def test_an_invoice_needs_at_least_one_line(self):
+        self.assertEqual(self.create(lines=[]).status_code, 400)
+
+    # --- the stamp --------------------------------------------------------
+
+    def test_the_practice_and_client_details_are_stamped_in(self):
+        body = self.create().json()
+        self.assertEqual(body["from_name"], "Anna Mathew Architects")
+        self.assertEqual(body["from_gstin"], "32AAAAA0000A1Z5")
+        self.assertEqual(body["from_bank"], "Bank: HDFC\nA/c: 123456")
+        self.assertEqual(body["to_name"], "Mr K")
+        self.assertEqual(body["to_address"], "9 Hill Road")
+        self.assertEqual(body["terms"], "Payable within 14 days.")
+
+    def test_changing_the_profile_does_not_restate_an_old_invoice(self):
+        """The whole reason the details are copied rather than looked up."""
+        invoice_id = self.create().json()["id"]
+
+        self.architect.billing_address = "Somewhere else entirely"
+        self.architect.gstin = "29BBBBB1111B2Z6"
+        self.architect.save()
+
+        body = self.client.get(f"/api/invoices/{invoice_id}/").json()
+        self.assertEqual(body["from_address"], "12 Marine Drive, Kochi")
+        self.assertEqual(body["from_gstin"], "32AAAAA0000A1Z5")
+
+    def test_details_sent_with_the_form_win_over_the_stamp(self):
+        body = self.create(to_name="Mrs K", to_gstin="32CCCCC2222C3Z7").json()
+        self.assertEqual(body["to_name"], "Mrs K")
+        self.assertEqual(body["to_gstin"], "32CCCCC2222C3Z7")
+
+    # --- numbering --------------------------------------------------------
+
+    def test_numbers_run_in_a_series_per_practice(self):
+        self.assertEqual(self.create().json()["number"], "INV-0001")
+        self.assertEqual(self.create().json()["number"], "INV-0002")
+
+    def test_the_series_continues_across_projects(self):
+        """A client asking which invoice this is needs an answer unique to the
+        whole practice, not to one job."""
+        self.create()
+        other = Project.objects.create(
+            architect=self.architect, name="Flat", client_name="Mrs B"
+        )
+        response = self.client.post(
+            f"/api/projects/{other.pk}/invoices/",
+            data=json.dumps(self.body()),
+            content_type="application/json",
+        )
+        self.assertEqual(response.json()["number"], "INV-0002")
+
+    def test_estimates_have_their_own_series(self):
+        self.assertEqual(self.create(kind="estimate").json()["number"], "EST-0001")
+        self.assertEqual(self.create().json()["number"], "INV-0001")
+
+    def test_another_practice_starts_at_one(self):
+        self.create()
+        other = make_architect("other@studio.example", "Other")
+        project = Project.objects.create(
+            architect=other, name="Shop", client_name="Mr T"
+        )
+        self.client.logout()
+        self.client.force_login(other)
+        response = self.client.post(
+            f"/api/projects/{project.pk}/invoices/",
+            data=json.dumps(self.body()),
+            content_type="application/json",
+        )
+        self.assertEqual(response.json()["number"], "INV-0001")
+
+    # --- estimates --------------------------------------------------------
+
+    def test_an_estimate_converts_into_an_invoice(self):
+        estimate = self.create(kind="estimate").json()
+        response = self.client.post(f"/api/invoices/{estimate['id']}/convert/")
+        self.assertEqual(response.status_code, 201, response.content)
+
+        invoice = response.json()
+        self.assertEqual(invoice["kind"], "invoice")
+        self.assertEqual(invoice["number"], "INV-0001")
+        self.assertEqual(invoice["total"], estimate["total"])
+        self.assertEqual(len(invoice["lines"]), 2)
+
+    def test_the_estimate_survives_its_own_conversion(self):
+        """The client was sent a URL showing an estimate. It has to keep
+        showing the estimate they agreed to."""
+        estimate = self.create(kind="estimate").json()
+        self.client.post(f"/api/invoices/{estimate['id']}/convert/")
+
+        still_there = self.client.get(f"/api/invoices/{estimate['id']}/").json()
+        self.assertEqual(still_there["kind"], "estimate")
+        self.assertEqual(still_there["number"], "EST-0001")
+
+    def test_an_invoice_cannot_be_converted(self):
+        invoice = self.create().json()
+        response = self.client.post(f"/api/invoices/{invoice['id']}/convert/")
+        self.assertEqual(response.status_code, 400)
+
+    # --- editing ----------------------------------------------------------
+
+    def test_editing_replaces_the_lines(self):
+        invoice = self.create().json()
+        response = self.client.patch(
+            f"/api/invoices/{invoice['id']}/",
+            data=json.dumps(
+                {"lines": [{"description": "Agreed fee", "quantity": "1", "rate": "40000"}]}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.json()["lines"]), 1)
+        self.assertEqual(response.json()["total"], "40000.00")
+
+    def test_a_line_from_a_milestone_does_not_edit_the_milestone(self):
+        """Correcting a figure on a bill must never rewrite the project."""
+        milestone = Milestone.objects.create(
+            project=self.project, title="Stage 1", amount=Decimal("20000")
+        )
+        self.create(
+            lines=[
+                {
+                    "description": "Stage 1",
+                    "quantity": "1",
+                    "rate": "18000",
+                    "milestone": milestone.pk,
+                }
+            ]
+        )
+        milestone.refresh_from_db()
+        self.assertEqual(milestone.amount, Decimal("20000"))
+
+    def test_deleting_a_milestone_leaves_the_invoice_standing(self):
+        milestone = Milestone.objects.create(
+            project=self.project, title="Stage 1", amount=Decimal("20000")
+        )
+        invoice = self.create(
+            lines=[
+                {
+                    "description": "Stage 1",
+                    "quantity": "1",
+                    "rate": "20000",
+                    "milestone": milestone.pk,
+                }
+            ]
+        ).json()
+        milestone.delete()
+
+        body = self.client.get(f"/api/invoices/{invoice['id']}/").json()
+        self.assertEqual(body["total"], "20000.00")
+        self.assertIsNone(body["lines"][0]["milestone"])
+
+    # --- who can see it ---------------------------------------------------
+
+    def test_another_architect_cannot_open_it(self):
+        invoice = self.create().json()
+        self.client.logout()
+        self.client.force_login(make_architect("other@studio.example", "Other"))
+        self.assertEqual(
+            self.client.get(f"/api/invoices/{invoice['id']}/").status_code, 404
+        )
+
+    def test_a_draft_is_not_readable_on_its_link(self):
+        """An unsent bill is a working document, not a published one."""
+        invoice = Invoice.objects.get(pk=self.create().json()["id"])
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(f"/api/i/{invoice.access_token}/").status_code, 404
+        )
+
+    def test_the_client_reads_it_once_it_is_sent(self):
+        invoice = Invoice.objects.get(pk=self.create().json()["id"])
+        self.client.post(f"/api/invoices/{invoice.pk}/send/")
+        self.client.logout()
+
+        body = self.client.get(f"/api/i/{invoice.access_token}/").json()
+        self.assertEqual(body["number"], "INV-0001")
+        self.assertEqual(body["total"], "66080.00")
+        self.assertEqual(len(body["lines"]), 2)
+
+    def test_the_invoice_link_opens_nothing_else(self):
+        """Sending a bill must not hand over the drawings."""
+        invoice = Invoice.objects.get(pk=self.create().json()["id"])
+        self.client.post(f"/api/invoices/{invoice.pk}/send/")
+        self.client.logout()
+
+        token = invoice.access_token
+        self.assertEqual(self.client.get(f"/api/p/{token}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/p/{token}/materials/").status_code, 404)
+
+    def test_the_project_link_does_not_open_the_invoice(self):
+        invoice = Invoice.objects.get(pk=self.create().json()["id"])
+        self.client.post(f"/api/invoices/{invoice.pk}/send/")
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(f"/api/i/{self.project.access_token}/").status_code, 404
+        )
+
+    def test_the_client_view_gives_away_no_handles(self):
+        invoice = Invoice.objects.get(pk=self.create().json()["id"])
+        self.client.post(f"/api/invoices/{invoice.pk}/send/")
+        self.client.logout()
+
+        body = self.client.get(f"/api/i/{invoice.access_token}/").json()
+        for field in ("id", "status", "access_token"):
+            self.assertNotIn(field, body)
+
+    # --- sending ----------------------------------------------------------
+
+    def test_sending_marks_it_sent_and_emails_the_link(self):
+        invoice = Invoice.objects.get(pk=self.create().json()["id"])
+        self.assertEqual(invoice.status, "draft")
+
+        self.client.post(f"/api/invoices/{invoice.pk}/send/")
+
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, "sent")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["mrk@example.com"])
+        self.assertIn(invoice.access_token, mail.outbox[0].body)
+
+    def test_sending_without_a_client_email_is_not_an_error(self):
+        """Plenty of architects send the link on WhatsApp. That is normal."""
+        self.project.client_email = ""
+        self.project.save()
+        invoice = Invoice.objects.get(pk=self.create().json()["id"])
+
+        response = self.client.post(f"/api/invoices/{invoice.pk}/send/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mail.outbox, [])
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, "sent")
+
+
+class TaxRateTests(MediaSandbox):
+    def setUp(self):
+        super().setUp()
+        self.architect = make_architect("anna@studio.example", "Anna Mathew Architects")
+        self.client.force_login(self.architect)
+
+    def test_the_slabs_are_seeded(self):
+        labels = [rate["label"] for rate in self.client.get("/api/tax-rates/").json()]
+        self.assertIn("No tax", labels)
+        self.assertIn("GST 18%", labels)
+
+    def test_a_retired_rate_is_no_longer_offered(self):
+        TaxRate.objects.filter(label="GST 28%").update(is_active=False)
+        labels = [rate["label"] for rate in self.client.get("/api/tax-rates/").json()]
+        self.assertNotIn("GST 28%", labels)
+
+    def test_changing_a_slab_does_not_restate_an_invoice(self):
+        """A line stores the percentage charged, not a pointer to the table."""
+        project = Project.objects.create(
+            architect=self.architect, name="Villa", client_name="Mr K"
+        )
+        invoice = self.client.post(
+            f"/api/projects/{project.pk}/invoices/",
+            data=json.dumps(
+                {"lines": [{"description": "Fee", "quantity": "1", "rate": "1000", "tax_percent": "18"}]}
+            ),
+            content_type="application/json",
+        ).json()
+
+        TaxRate.objects.filter(label="GST 18%").update(percent=Decimal("20"))
+
+        body = self.client.get(f"/api/invoices/{invoice['id']}/").json()
+        self.assertEqual(body["tax_total"], "180.00")

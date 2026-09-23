@@ -37,9 +37,13 @@ from .models import (
     Comment,
     DrawingSet,
     DrawingVersion,
+    Invoice,
     Material,
+    MaterialPhoto,
     Milestone,
     Project,
+    TaxRate,
+    Unit,
 )
 from .permissions import HasProjectToken, IsProjectArchitect
 from .serializers import (
@@ -58,8 +62,13 @@ from .serializers import (
     MilestoneSerializer,
     ProfileCardSerializer,
     ProfileUpdateSerializer,
+    ClientInvoiceSerializer,
+    InvoiceListSerializer,
+    InvoiceSerializer,
     ProjectSerializer,
     RegistrationSerializer,
+    TaxRateSerializer,
+    UnitSerializer,
 )
 from .storage import stream
 
@@ -378,6 +387,16 @@ class ArchitectCommentCreateView(ArchitectScopedMixin, APIView):
         )
 
 
+class UnitListView(generics.ListAPIView):
+    """What to offer in the unit box. Any signed-in architect, same list."""
+
+    serializer_class = UnitSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return Unit.objects.filter(is_active=True)
+
+
 class MaterialListCreateView(ArchitectScopedMixin, generics.ListCreateAPIView):
     serializer_class = MaterialSerializer
 
@@ -439,13 +458,28 @@ class ArchitectVersionPreviewView(ArchitectVersionFileView):
 
 
 class ArchitectMaterialPhotoView(APIView):
-    def get(self, request, material_id):
-        material = get_object_or_404(
-            Material.objects.filter(project__architect=request.user), pk=material_id
+    """One picture from a material's gallery: read it, or remove it.
+
+    Scoped through the material to the project to the architect, so a photo id
+    on its own opens nothing and deletes nothing.
+    """
+
+    def get_photo(self, request, material_id, photo_id):
+        return get_object_or_404(
+            MaterialPhoto.objects.filter(
+                material_id=material_id,
+                material__project__architect=request.user,
+            ),
+            pk=photo_id,
         )
-        if not material.photo:
-            raise Http404
-        return stream(material.photo, download_name=stored_name(material.photo))
+
+    def get(self, request, material_id, photo_id):
+        photo = self.get_photo(request, material_id, photo_id)
+        return stream(photo.image, download_name=stored_name(photo.image))
+
+    def delete(self, request, material_id, photo_id):
+        self.get_photo(request, material_id, photo_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ArchitectMaterialInvoiceView(APIView):
@@ -766,13 +800,16 @@ class ClientFilePreviewView(ClientFileView):
 
 
 class ClientMaterialPhotoView(ClientBaseView):
-    def get(self, request, token, material_id):
-        material = get_object_or_404(
-            request.project.materials, pk=material_id
+    """One picture from a material's gallery, scoped to the client's project."""
+
+    def get(self, request, token, material_id, photo_id):
+        photo = get_object_or_404(
+            MaterialPhoto.objects.filter(
+                material_id=material_id, material__project=request.project
+            ),
+            pk=photo_id,
         )
-        if not material.photo:
-            raise Http404
-        return stream(material.photo, download_name=stored_name(material.photo))
+        return stream(photo.image, download_name=stored_name(photo.image))
 
 
 class ClientMaterialInvoiceView(ClientBaseView):
@@ -788,6 +825,167 @@ class ClientMaterialInvoiceView(ClientBaseView):
 class ClientLogoView(ClientBaseView):
     def get(self, request, token):
         architect = request.project.architect
+        if not architect.logo:
+            raise Http404
+        return stream(architect.logo, download_name=stored_name(architect.logo))
+
+
+# ==========================================================================
+# invoices -- architect side
+# ==========================================================================
+
+
+class TaxRateListView(generics.ListAPIView):
+    """The rate card offered when building an invoice."""
+
+    serializer_class = TaxRateSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return TaxRate.objects.filter(is_active=True)
+
+
+def stamp_from(project) -> dict:
+    """The billing details as they stand right now, ready to be frozen in.
+
+    Called once, when an invoice is created. Everything it returns is copied
+    onto the invoice and never refreshed: a practice that moves office next
+    year must not silently restate the address on invoices already paid.
+    """
+    architect = project.architect
+    return {
+        "from_name": architect.practice_name,
+        "from_address": architect.billing_address,
+        "from_gstin": architect.gstin,
+        "from_phone": architect.phone,
+        "from_email": architect.email,
+        "from_bank": architect.bank_details,
+        "to_name": project.client_name,
+        "to_address": project.address,
+        "to_phone": project.client_phone,
+        "to_email": project.client_email,
+        "terms": architect.invoice_terms,
+    }
+
+
+class InvoiceListCreateView(ArchitectScopedMixin, generics.ListCreateAPIView):
+    """Every invoice and estimate on one project, and the way to raise one."""
+
+    def get_serializer_class(self):
+        return (
+            InvoiceSerializer
+            if self.request.method == "POST"
+            else InvoiceListSerializer
+        )
+
+    def get_queryset(self):
+        return self.get_project().invoices.prefetch_related("lines")
+
+    def perform_create(self, serializer):
+        project = self.get_project()
+        # The stamp fills the gaps and never overwrites: a form that sends a
+        # corrected client address for this one bill means it.
+        defaults = stamp_from(project)
+        defaults["issued_on"] = timezone.localdate()
+        serializer.save(
+            project=project,
+            **{
+                field: value
+                for field, value in defaults.items()
+                if not serializer.validated_data.get(field)
+            },
+        )
+
+
+class InvoiceDetailView(ArchitectScopedMixin, generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = InvoiceSerializer
+    lookup_url_kwarg = "invoice_id"
+
+    def get_queryset(self):
+        return Invoice.objects.filter(
+            project__architect=self.request.user
+        ).prefetch_related("lines")
+
+
+class InvoiceConvertView(APIView):
+    """Turn an accepted estimate into the invoice for it."""
+
+    def post(self, request, invoice_id):
+        estimate = get_object_or_404(
+            Invoice.objects.filter(project__architect=request.user), pk=invoice_id
+        )
+        if estimate.kind != Invoice.Kind.ESTIMATE:
+            return Response(
+                {"detail": "That is already an invoice."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        invoice = estimate.convert_to_invoice()
+        return Response(
+            InvoiceSerializer(invoice, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class InvoiceSendView(APIView):
+    """Mark it sent and email the client the link, if there is an address.
+
+    Marking and sending are one action because they are one intention. An
+    invoice that is 'sent' but was never delivered is a lie the architect
+    tells themselves, and two buttons is how that happens.
+    """
+
+    def post(self, request, invoice_id):
+        invoice = get_object_or_404(
+            Invoice.objects.filter(project__architect=request.user).prefetch_related(
+                "lines"
+            ),
+            pk=invoice_id,
+        )
+        if invoice.status == Invoice.Status.DRAFT:
+            invoice.status = Invoice.Status.SENT
+            invoice.save(update_fields=["status", "updated_at"])
+        emails.send_invoice(invoice)
+        return Response(
+            InvoiceSerializer(invoice, context={"request": request}).data
+        )
+
+
+# ==========================================================================
+# invoices -- the person paying
+# ==========================================================================
+
+
+class ClientInvoiceBaseView(APIView):
+    """An invoice reached by its own token, and nothing else reached with it.
+
+    Deliberately not a ClientBaseView: that one resolves a project token and
+    would let an invoice link open the drawings. The whole reason an invoice
+    carries its own token is that sending a bill should not hand over the job.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get_invoice(self, token):
+        return get_object_or_404(
+            Invoice.objects.select_related("project", "project__architect")
+            .prefetch_related("lines")
+            .exclude(status=Invoice.Status.DRAFT)
+            .exclude(status=Invoice.Status.CANCELLED),
+            access_token=token,
+        )
+
+
+class ClientInvoiceView(ClientInvoiceBaseView):
+    def get(self, request, token):
+        return Response(ClientInvoiceSerializer(self.get_invoice(token)).data)
+
+
+class ClientInvoiceLogoView(ClientInvoiceBaseView):
+    """The practice's mark, so the bill looks like it came from them."""
+
+    def get(self, request, token):
+        architect = self.get_invoice(token).project.architect
         if not architect.logo:
             raise Http404
         return stream(architect.logo, download_name=stored_name(architect.logo))

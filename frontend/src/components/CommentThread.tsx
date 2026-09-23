@@ -135,7 +135,7 @@ export function CommentThread({
               ? "Anything you want to ask or change?"
               : "Add a note for the client"
           }
-          className="field resize-y"
+          className="field"
         />
 
         {error ? (

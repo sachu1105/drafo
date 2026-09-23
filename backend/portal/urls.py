@@ -69,6 +69,9 @@ urlpatterns = [
         views.ArchitectVersionPreviewView.as_view(),
         name="architect-version-preview",
     ),
+    # --- architect: reference data ---
+    path("units/", views.UnitListView.as_view(), name="unit-list"),
+    path("tax-rates/", views.TaxRateListView.as_view(), name="tax-rate-list"),
     # --- architect: materials ---
     path(
         "projects/<int:project_id>/materials/",
@@ -81,7 +84,7 @@ urlpatterns = [
         name="material-detail",
     ),
     path(
-        "materials/<int:material_id>/photo/",
+        "materials/<int:material_id>/photos/<int:photo_id>/",
         views.ArchitectMaterialPhotoView.as_view(),
         name="material-photo",
     ),
@@ -89,6 +92,27 @@ urlpatterns = [
         "materials/<int:material_id>/invoice/",
         views.ArchitectMaterialInvoiceView.as_view(),
         name="material-invoice",
+    ),
+    # --- architect: invoices and estimates ---
+    path(
+        "projects/<int:project_id>/invoices/",
+        views.InvoiceListCreateView.as_view(),
+        name="invoice-list",
+    ),
+    path(
+        "invoices/<int:invoice_id>/",
+        views.InvoiceDetailView.as_view(),
+        name="invoice-detail",
+    ),
+    path(
+        "invoices/<int:invoice_id>/convert/",
+        views.InvoiceConvertView.as_view(),
+        name="invoice-convert",
+    ),
+    path(
+        "invoices/<int:invoice_id>/send/",
+        views.InvoiceSendView.as_view(),
+        name="invoice-send",
     ),
     # --- architect: milestones ---
     path(
@@ -141,13 +165,20 @@ urlpatterns = [
         views.ClientCommentView.as_view(),
         name="client-comment",
     ),
+    # The invoice link is its own credential and reaches nothing else.
+    path("i/<str:token>/", views.ClientInvoiceView.as_view(), name="client-invoice"),
+    path(
+        "i/<str:token>/logo/",
+        views.ClientInvoiceLogoView.as_view(),
+        name="client-invoice-logo",
+    ),
     path(
         "p/<str:token>/materials/",
         views.ClientMaterialsView.as_view(),
         name="client-materials",
     ),
     path(
-        "p/<str:token>/materials/<int:material_id>/photo/",
+        "p/<str:token>/materials/<int:material_id>/photos/<int:photo_id>/",
         views.ClientMaterialPhotoView.as_view(),
         name="client-material-photo",
     ),
