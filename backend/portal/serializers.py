@@ -850,6 +850,7 @@ class MilestoneSerializer(serializers.ModelSerializer):
 
 class ProjectSerializer(serializers.ModelSerializer):
     client_url = serializers.CharField(read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
     drawing_set_count = serializers.SerializerMethodField()
     material_count = serializers.SerializerMethodField()
     milestone_count = serializers.SerializerMethodField()
@@ -865,6 +866,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             "client_email",
             "address",
             "status",
+            "status_label",
             "access_token",
             "client_url",
             "drawing_set_count",
@@ -874,7 +876,14 @@ class ProjectSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "access_token", "client_url", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "access_token",
+            "client_url",
+            "status_label",
+            "created_at",
+            "updated_at",
+        )
 
     def get_drawing_set_count(self, obj) -> int:
         return obj.drawing_sets.count()

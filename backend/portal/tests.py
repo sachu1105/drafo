@@ -1870,3 +1870,80 @@ class TaxRateTests(MediaSandbox):
 
         body = self.client.get(f"/api/invoices/{invoice['id']}/").json()
         self.assertEqual(body["tax_total"], "180.00")
+
+
+class ProjectEditingTests(MediaSandbox):
+    """Details set once at creation have to be correctable afterwards."""
+
+    def setUp(self):
+        super().setUp()
+        self.architect = make_architect("anna@studio.example", "Anna Mathew Architects")
+        self.client.force_login(self.architect)
+        self.project = Project.objects.create(
+            architect=self.architect,
+            name="Villa",
+            client_name="Mr K",
+            client_phone="+91 98470 1234",
+        )
+
+    def patch(self, **body):
+        return self.client.patch(
+            f"/api/projects/{self.project.pk}/",
+            data=json.dumps(body),
+            content_type="application/json",
+        )
+
+    def test_the_details_can_be_corrected(self):
+        """A phone number with a digit missing is why a link never arrives."""
+        response = self.patch(client_phone="+91 98470 12345", client_name="Mrs K")
+        self.assertEqual(response.status_code, 200, response.content)
+
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.client_phone, "+91 98470 12345")
+        self.assertEqual(self.project.client_name, "Mrs K")
+
+    def test_a_project_starts_in_progress(self):
+        self.assertEqual(self.project.status, "active")
+        body = self.client.get(f"/api/projects/{self.project.pk}/").json()
+        self.assertEqual(body["status_label"], "In progress")
+
+    def test_every_status_is_accepted(self):
+        for value, label in (
+            ("on_hold", "On hold"),
+            ("completed", "Completed"),
+            ("cancelled", "Cancelled"),
+            ("active", "In progress"),
+        ):
+            response = self.patch(status=value)
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(response.json()["status_label"], label)
+
+    def test_a_status_nobody_defined_is_refused(self):
+        self.assertEqual(self.patch(status="paused").status_code, 400)
+
+    def test_the_label_cannot_be_written(self):
+        """It is the server's word for the status, not a field."""
+        self.patch(status_label="Whatever I like")
+        self.assertEqual(
+            self.client.get(f"/api/projects/{self.project.pk}/").json()["status_label"],
+            "In progress",
+        )
+
+    def test_the_token_cannot_be_rewritten_by_an_edit(self):
+        before = self.project.access_token
+        self.patch(access_token="something-i-chose", name="Renamed")
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.access_token, before)
+
+    def test_another_architect_cannot_edit_it(self):
+        self.client.logout()
+        self.client.force_login(make_architect("other@studio.example", "Other"))
+        self.assertEqual(self.patch(name="Mine now").status_code, 404)
+
+    def test_a_closed_project_still_serves_its_client_link(self):
+        """Completing a job does not take the record away from the client."""
+        self.patch(status="completed")
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(f"/api/p/{self.project.access_token}/").status_code, 200
+        )

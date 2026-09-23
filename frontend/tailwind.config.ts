@@ -1,7 +1,11 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Palette: a sage-and-sand scheme built from four source colours.
+ * Palette: a sage-and-sand scheme built from four source colours, in two
+ * themes.
+ *
+ * The values live in globals.css as CSS variables; this file only names them.
+ * See that file for the dark set and for why each step lands where it does.
  *
  *   Ocean Deep  #4E635E   brand — filled buttons, active states
  *   Villa Nova  #E2E0C8   sand — highlight surfaces
@@ -19,41 +23,62 @@ import type { Config } from "tailwindcss";
  */
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
+  // The theme is chosen by a `data-theme` attribute on <html>, set before
+  // first paint by an inline script. Not Tailwind's `dark:` variant: with the
+  // palette behind variables there is nothing for a `dark:` prefix to do, and
+  // a codebase where half the colours switch by themselves and half need a
+  // prefix is one where somebody always forgets the prefix.
+  darkMode: ["selector", '[data-theme="dark"]'],
   theme: {
     extend: {
+      /* Every colour is a variable, and the variables are defined twice --
+         once for the light theme and once for the dark one, in globals.css.
+         Nothing here changes between them, which is the point: a component
+         asks for `bg-card` and gets the right surface for whichever theme is
+         on, with no `dark:` prefix anywhere in the codebase.
+
+         The channels are stored bare (`244 243 230`) rather than as a colour,
+         so `<alpha-value>` still works. That is not a detail -- `bg-ink/50`,
+         `text-sand/85` and `bg-paper/95` are all in use, and a plain
+         `var(--ink)` would have broken every one of them silently. */
       colors: {
         // --- surfaces ---
-        paper: "#F4F3E6", // page, a lightened Villa Nova
-        card: "#FCFBF4", // panels sitting on the page
-        sand: "#E2E0C8", // Villa Nova, exact — highlight regions
-        sheet: "#FFFFFF", // true white, reserved for drawings
+        paper: "rgb(var(--paper) / <alpha-value>)",
+        card: "rgb(var(--card) / <alpha-value>)",
+        sand: "rgb(var(--sand) / <alpha-value>)",
+        // True white in both themes, and reserved for drawings: a plan is ink
+        // on white paper, and showing one on a dark ground is showing a
+        // different drawing.
+        sheet: "rgb(var(--sheet) / <alpha-value>)",
 
         // --- brand and source colours ---
-        brand: "#4E635E", // Ocean Deep, exact
-        brandDark: "#3F544C", // pressed / hover
-        sage: "#A6B49E", // Siren Song, exact
-        olive: "#818C78", // Big River, exact
+        brand: "rgb(var(--brand) / <alpha-value>)",
+        brandDark: "rgb(var(--brand-dark) / <alpha-value>)",
+        sage: "rgb(var(--sage) / <alpha-value>)",
+        olive: "rgb(var(--olive) / <alpha-value>)",
 
         // --- text ---
-        ink: "#1E2A26", // primary, 13.3:1 on paper
-        muted: "#5F6659", // secondary, 5.3:1
-        faint: "#7E8878", // tertiary labels, 3.3:1
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        muted: "rgb(var(--muted) / <alpha-value>)",
+        faint: "rgb(var(--faint) / <alpha-value>)",
 
         // --- lines ---
-        rule: "#CBD1C0",
-        ruleSoft: "#E2E3D3",
+        rule: "rgb(var(--rule) / <alpha-value>)",
+        ruleSoft: "rgb(var(--rule-soft) / <alpha-value>)",
 
         // --- material swatches ---
         // Lifted pixel-for-pixel from the sample board in the hero drawing:
         // wood, stone and a sage laminate. They ground the three feature
         // panels, so each drawing sits on a material rather than on paper.
+        // Fixed in both themes -- they are photographs of materials, and a
+        // teak sample is not a different colour at night.
         swatchWood: "#E4C1A0",
         swatchStone: "#E8E2DC",
         swatchSage: "#859388",
 
         // --- state ---
-        accent: "#3F544C", // approved, 7.3:1
-        accentSoft: "#E4E9E2",
+        accent: "rgb(var(--accent) / <alpha-value>)",
+        accentSoft: "rgb(var(--accent-soft) / <alpha-value>)",
       },
       fontFamily: {
         display: ["var(--font-display)", "system-ui", "sans-serif"],
@@ -80,8 +105,11 @@ const config: Config = {
         // `lift` is a card that is still on the page and has merely been
         // pointed at, so it is about half the strength; any more and a hover
         // reads as something that has opened.
-        menu: "0 1px 2px rgba(30,42,38,0.05), 0 8px 24px rgba(30,42,38,0.12)",
-        lift: "0 1px 2px rgba(30,42,38,0.04), 0 4px 10px rgba(30,42,38,0.07)",
+        // The shadow colour is a variable too. A shadow tuned for ink on
+        // cream is invisible on a dark page: what reads as depth there is a
+        // heavier, blacker cast, not the same one at the same strength.
+        menu: "0 1px 2px rgb(var(--shadow) / var(--shadow-a1)), 0 8px 24px rgb(var(--shadow) / var(--shadow-a2))",
+        lift: "0 1px 2px rgb(var(--shadow) / var(--shadow-a3)), 0 4px 10px rgb(var(--shadow) / var(--shadow-a4))",
       },
       keyframes: {
         rise: {

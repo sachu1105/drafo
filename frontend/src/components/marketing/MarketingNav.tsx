@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useEffect, useState } from "react";
 import { me } from "@/lib/auth";
 
@@ -50,6 +51,9 @@ export function MarketingNav() {
         </nav>
 
         <div className="hidden shrink-0 items-center gap-2 md:flex">
+          <span className="mr-1">
+            <ThemeToggle />
+          </span>
           {signedIn ? (
             <Link href="/projects" className="btn-primary px-4 py-2">
               Go to your projects

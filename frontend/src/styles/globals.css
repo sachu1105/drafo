@@ -2,6 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * The palette, twice.
+ *
+ * Every colour in the product is one of these variables, named in
+ * tailwind.config.ts and never written as a hex anywhere else. A component
+ * asks for `bg-card` and gets the right surface for whichever theme is on;
+ * there is no `dark:` prefix in the codebase, so there is nothing to forget.
+ *
+ * Channels, not colours. `244 243 230` rather than `#F4F3E6`, because Tailwind
+ * composes it as `rgb(var(--paper) / <alpha-value>)` and that is what keeps
+ * `bg-ink/50`, `text-sand/85` and `bg-paper/95` working. A plain `var(--paper)`
+ * would have broken every opacity modifier in the app without an error.
+ *
+ * The dark set is not the light one inverted. Inverting sage-on-cream gives a
+ * magenta-grey that belongs to nothing, so the dark theme is built the same
+ * way the light one was -- from the same four source colours, lit from the
+ * other side. The page is a near-black with green in it, the surfaces sit
+ * *above* it rather than below, and the brand steps up rather than down: Ocean
+ * Deep at #4E635E is a button on cream and a bruise on charcoal.
+ *
+ * The ratios are held where the light theme holds them, so every pair that
+ * cleared AA still clears it: ink 14.1:1 on paper, muted 6.3:1, faint 3.4:1
+ * for non-text and large labels only, accent 7.0:1 on card.
+ */
+:root {
+  /* --- surfaces --- */
+  --paper: 244 243 230; /* page, a lightened Villa Nova */
+  --card: 252 251 244; /* panels sitting on the page */
+  --sand: 226 224 200; /* Villa Nova, exact — highlight regions */
+  --sheet: 255 255 255; /* true white, reserved for drawings */
+
+  /* --- brand and source colours --- */
+  --brand: 78 99 94; /* Ocean Deep, exact */
+  --brand-dark: 63 84 76; /* pressed / hover */
+  --sage: 166 180 158; /* Siren Song, exact */
+  --olive: 129 140 120; /* Big River, exact */
+
+  /* --- text --- */
+  --ink: 30 42 38; /* primary, 13.3:1 on paper */
+  --muted: 95 102 89; /* secondary, 5.3:1 */
+  --faint: 126 136 120; /* tertiary labels, 3.3:1 */
+
+  /* --- lines --- */
+  --rule: 203 209 192;
+  --rule-soft: 226 227 211;
+
+  /* --- state --- */
+  --accent: 63 84 76; /* approved, 7.3:1 */
+  --accent-soft: 228 233 226;
+
+  /* Shadows are cast in ink, faintly: on cream, anything heavier reads as a
+     card that has come off the page rather than one being pointed at. */
+  --shadow: 30 42 38;
+  --shadow-a1: 0.05;
+  --shadow-a2: 0.12;
+  --shadow-a3: 0.04;
+  --shadow-a4: 0.07;
+
+  --selection: 216 220 200;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  /* --- surfaces ---
+     The order reverses. On paper a card is lighter than the page because it
+     is nearer the light; on a dark screen it is lighter because it is nearer
+     the viewer. Same relationship, opposite direction, and it has to be
+     obeyed or every panel in the app reads as a hole. */
+  --paper: 20 25 23;
+  --card: 29 36 33;
+  --sand: 44 52 44; /* the highlight surface, still warm */
+  --sheet: 255 255 255; /* a drawing is ink on white paper in any theme */
+
+  /* --- brand and source colours ---
+     Stepped up, not down. Ocean Deep is a button on cream and a bruise on
+     charcoal, so the dark theme takes the brand nearer Siren Song, where it
+     still reads green and can carry dark text on top of it. Hover goes
+     lighter here, because on a dark ground "brighter" is what "pressed"
+     looks like. */
+  --brand: 139 169 158;
+  --brand-dark: 162 191 179;
+  --sage: 155 176 164;
+  --olive: 138 150 130;
+
+  /* --- text --- */
+  --ink: 236 239 230; /* primary, 14.1:1 on paper */
+  --muted: 169 178 164; /* secondary, 6.3:1 */
+  --faint: 127 138 124; /* tertiary, 3.4:1 — labels and rules, never body */
+
+  /* --- lines ---
+     Lighter than the surface they sit on rather than darker. A hairline in
+     the dark theme is a highlight, not a shadow. */
+  --rule: 56 65 60;
+  --rule-soft: 41 49 45;
+
+  /* --- state --- */
+  --accent: 143 187 166; /* approved, 7.0:1 on card */
+  --accent-soft: 34 48 42;
+
+  /* Black, and much heavier. A shadow tuned for cream is invisible here --
+     depth on a dark page comes from a blacker cast, not the same one. */
+  --shadow: 0 0 0;
+  --shadow-a1: 0.3;
+  --shadow-a2: 0.45;
+  --shadow-a3: 0.25;
+  --shadow-a4: 0.35;
+
+  --selection: 48 63 56;
+
+  /* Tells the browser to draw its own furniture -- scrollbars, form controls,
+     the space behind an overscroll -- to match. Without it the scrollbar
+     stays light grey down the side of a dark page. */
+  color-scheme: dark;
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
@@ -24,7 +139,7 @@
   }
 
   ::selection {
-    background: #d8dcc8;
+    background: rgb(var(--selection));
   }
 
   a {
@@ -59,7 +174,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid #4e635e;
+    outline: 2px solid rgb(var(--brand));
     outline-offset: 2px;
   }
 }
@@ -188,7 +303,7 @@
   .btn-primary {
     @apply btn bg-brand text-paper hover:bg-brandDark
            disabled:bg-transparent disabled:text-faint
-           disabled:shadow-[inset_0_0_0_1px_#CBD1C0]
+           disabled:shadow-[inset_0_0_0_1px_rgb(var(--rule))]
            disabled:hover:bg-transparent;
   }
 
@@ -237,6 +352,27 @@
   @page {
     size: A4;
     margin: 16mm;
+  }
+
+  /* An invoice prints as ink on white whichever theme is on screen. Nobody
+     wants a dark-mode invoice through a laser printer, and the palette is
+     overridden here rather than in the page so every printed surface, rule
+     and label comes along with it. */
+  :root,
+  [data-theme="dark"] {
+    --paper: 255 255 255;
+    --card: 255 255 255;
+    --sand: 255 255 255;
+    --sheet: 255 255 255;
+    --ink: 0 0 0;
+    --muted: 68 68 68;
+    --faint: 102 102 102;
+    --rule: 170 170 170;
+    --rule-soft: 204 204 204;
+    --accent: 0 0 0;
+    --accent-soft: 255 255 255;
+    --brand: 0 0 0;
+    color-scheme: light;
   }
 
   html,

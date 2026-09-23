@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
+import { IconButton } from "@/components/IconButton";
 import { DrawingsTab } from "@/components/architect/DrawingsTab";
 import { MaterialsTab } from "@/components/architect/MaterialsTab";
 import { PaymentsTab } from "@/components/architect/PaymentsTab";
+import { ProjectDetailsForm } from "@/components/architect/ProjectDetailsForm";
 import { ShareTab } from "@/components/architect/ShareTab";
 import { api } from "@/lib/api";
 import type { Project } from "@/lib/types";
@@ -20,12 +23,6 @@ function Dot() {
   );
 }
 
-const STATUS_LABEL: Record<Project["status"], string> = {
-  active: "Active",
-  on_hold: "On hold",
-  completed: "Completed",
-};
-
 export default function ProjectPage({
   params,
 }: {
@@ -37,6 +34,7 @@ export default function ProjectPage({
   const [project, setProject] = useState<Project | null>(null);
   const [missing, setMissing] = useState(false);
   const [tab, setTab] = useState<Tab>("Drawings");
+  const [editing, setEditing] = useState(false);
 
   const reload = useCallback(() => {
     api<Project>(`/projects/${projectId}/`)
@@ -84,14 +82,29 @@ export default function ProjectPage({
         &lsaquo;&nbsp; Projects
       </Link>
 
-      {/* --- header ------------------------------------------------------ */}
+      {/* --- header ------------------------------------------------------
+          Editing happens in place. The name, the client and their number are
+          read off this block twenty times a week, and a separate settings
+          screen to correct a mistyped digit is a screen nobody finds. */}
+      {editing ? (
+        <div className="mt-4">
+          <ProjectDetailsForm
+            project={project}
+            onSaved={(saved) => {
+              setProject(saved);
+              setEditing(false);
+            }}
+            onCancel={() => setEditing(false)}
+          />
+        </div>
+      ) : (
       <header className="mt-3 flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-display text-display">{project.name}</h1>
             {project.status !== "active" ? (
-              <span className="border border-rule px-2 py-0.5 text-[0.75rem] text-muted">
-                {STATUS_LABEL[project.status]}
+              <span className="chip border border-rule text-muted">
+                {project.status_label}
               </span>
             ) : null}
           </div>
@@ -145,8 +158,14 @@ export default function ProjectPage({
               Share with client
             </button>
           ) : null}
+          <IconButton
+            label="Edit project details"
+            icon={Pencil}
+            onClick={() => setEditing(true)}
+          />
         </div>
       </header>
+      )}
 
       {/* --- tabs --------------------------------------------------------
           The rule lives on the wrapper and the negative margin on the strip,

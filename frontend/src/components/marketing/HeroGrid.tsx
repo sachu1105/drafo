@@ -35,13 +35,15 @@ const PEAK = 0.28;
 
 /** The grid itself: one hairline down, one across. */
 const LINES =
-  "linear-gradient(to right, #CBD1C0 1px, transparent 1px)," +
-  "linear-gradient(to bottom, #CBD1C0 1px, transparent 1px)";
+  "linear-gradient(to right, rgb(var(--rule)) 1px, transparent 1px)," +
+  "linear-gradient(to bottom, rgb(var(--rule)) 1px, transparent 1px)";
 
 /* The grid was always faded out towards the foot of the section so it reads
    as paper rather than as decoration. Carried on the wrapper so it applies to
    the lit cells too -- otherwise the cursor would light squares in the dead
    zone where no grid is drawn. */
+// #000 is the mask's own colour and has nothing to do with the palette: a
+// mask reads opacity, not hue, so this stays fixed in both themes.
 const FADE = "radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 75%)";
 
 export function HeroGrid() {
@@ -121,7 +123,7 @@ export function HeroGrid() {
             style={{
               width: CELL,
               height: CELL,
-              backgroundColor: "#A6B49E",
+              backgroundColor: "rgb(var(--sage))",
               willChange: "transform, opacity",
             }}
           />

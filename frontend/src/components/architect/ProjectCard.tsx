@@ -2,12 +2,6 @@ import Link from "next/link";
 import { formatDate } from "@/lib/format";
 import type { Project } from "@/lib/types";
 
-const STATUS_LABEL: Record<Project["status"], string> = {
-  active: "Active",
-  on_hold: "On hold",
-  completed: "Completed",
-};
-
 /**
  * One project.
  *
@@ -26,8 +20,8 @@ export function ProjectCard({ project }: { project: Project }) {
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-display text-[1.3125rem] leading-snug">{project.name}</h2>
         {project.status !== "active" ? (
-          <span className="mt-1 shrink-0 whitespace-nowrap text-[0.75rem] text-faint">
-            {STATUS_LABEL[project.status]}
+          <span className="chip mt-0.5 border border-rule text-muted">
+            {project.status_label}
           </span>
         ) : null}
       </div>

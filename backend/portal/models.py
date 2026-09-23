@@ -208,9 +208,22 @@ class Architect(AbstractUser):
 
 class Project(models.Model):
     class Status(models.TextChoices):
-        ACTIVE = "active", "Active"
+        """Where the job stands.
+
+        Four, and no more. A status list long enough to describe every shade
+        of a project is one nobody keeps up to date, and a stale status is
+        worse than none -- it is the list lying about which jobs are live.
+
+        On hold and cancelled are deliberately separate: one is a job that
+        will start again and the other is one that will not, and an architect
+        looking at a list of twelve projects needs to know which is which
+        without opening them.
+        """
+
+        ACTIVE = "active", "In progress"
         ON_HOLD = "on_hold", "On hold"
         COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
 
     architect = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="projects"

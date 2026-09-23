@@ -84,6 +84,9 @@ export type Unit = {
   label: string;
 };
 
+/** Where a job stands. Four, because a longer list goes stale. */
+export type ProjectStatus = "active" | "on_hold" | "completed" | "cancelled";
+
 export type TaxRate = {
   id: number;
   label: string;
@@ -198,7 +201,7 @@ export type ClientProject = {
   name: string;
   client_name: string;
   address: string;
-  status: "active" | "on_hold" | "completed";
+  status: ProjectStatus;
   updated_at: string;
   practice: Practice;
   drawing_sets: DrawingSet[];
@@ -213,7 +216,9 @@ export type Project = {
   client_phone: string;
   client_email: string;
   address: string;
-  status: "active" | "on_hold" | "completed";
+  status: ProjectStatus;
+  /** The status in words, as the server spells it. Never built client-side. */
+  status_label: string;
   access_token: string;
   client_url: string;
   drawing_set_count: number;

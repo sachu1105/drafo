@@ -58,20 +58,20 @@ function FloorPlan() {
     >
       <g
         fill="none"
-        stroke="#1E2A26"
+        stroke="rgb(var(--ink))"
         strokeWidth="2"
         vectorEffect="non-scaling-stroke"
       >
         <rect x="14" y="14" width="252" height="152" />
       </g>
-      <g fill="none" stroke="#1E2A26" strokeWidth="1">
+      <g fill="none" stroke="rgb(var(--ink))" strokeWidth="1">
         <path d="M120 14v90M120 104h146M196 104v62M14 118h106" />
       </g>
-      <g fill="#E2E0C8" stroke="none">
+      <g fill="rgb(var(--sand))" stroke="none">
         <rect x="16" y="16" width="102" height="100" />
       </g>
       <g
-        fill="#5F6659"
+        fill="rgb(var(--muted))"
         fontSize="7"
         fontFamily="var(--font-body), system-ui, sans-serif"
         letterSpacing="0.06em"

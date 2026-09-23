@@ -271,8 +271,8 @@ function FeatureVisual({ group }: { group: (typeof GROUPS)[number] }) {
             className="absolute inset-0 opacity-70"
             style={{
               backgroundImage:
-                "linear-gradient(to right, #CBD1C0 1px, transparent 1px)," +
-                "linear-gradient(to bottom, #CBD1C0 1px, transparent 1px)",
+                "linear-gradient(to right, rgb(var(--rule)) 1px, transparent 1px)," +
+                "linear-gradient(to bottom, rgb(var(--rule)) 1px, transparent 1px)",
               backgroundSize: "48px 48px",
             }}
           />

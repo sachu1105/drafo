@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserMenu } from "@/components/architect/UserMenu";
 import { logout, useArchitect } from "@/lib/auth";
 
@@ -60,7 +61,15 @@ export default function ArchitectLayout({
             )}
           </Link>
 
-          <UserMenu architect={architect} onSignOut={signOut} />
+          <div className="flex shrink-0 items-center gap-3">
+            {/* Beside the account menu, because choosing a theme is the same
+                sort of thing as signing out: about the person at the desk,
+                not about the project on the screen. */}
+            <span className="hidden sm:block">
+              <ThemeToggle />
+            </span>
+            <UserMenu architect={architect} onSignOut={signOut} />
+          </div>
         </div>
       </header>
 

@@ -424,6 +424,42 @@ judge features.
   — earns a vertical scrollbar beside four tabs. Put the rule on a wrapper and
   the negative margin on the strip.
 
+### Two themes
+
+Every colour in the product is a CSS variable, defined twice in
+`globals.css` — once for light, once for dark — and named in
+`tailwind.config.ts`. **There is no `dark:` prefix anywhere in the codebase**,
+and that is the point: a component asks for `bg-card` and gets the right
+surface for whichever theme is on. A codebase where half the colours switch by
+themselves and half need a prefix is one where somebody always forgets the
+prefix.
+
+The channels are stored bare (`244 243 230`, not `#F4F3E6`) so Tailwind can
+compose `rgb(var(--paper) / <alpha-value>)`. That is not a detail: `bg-ink/50`,
+`text-sand/85` and `bg-paper/95` are all in use, and a plain `var(--paper)`
+would have broken every opacity modifier in the app without an error.
+
+**The dark set is not the light one inverted.** Inverting sage-on-cream gives a
+magenta-grey that belongs to nothing, so it is built the same way the light one
+was — from the same four source colours, lit from the other side. Two
+relationships reverse and both matter: a card is *lighter* than the page in
+both themes but for opposite reasons, and the brand steps *up* rather than down,
+because Ocean Deep is a button on cream and a bruise on charcoal. Hover goes
+lighter in the dark theme, since on a dark ground "brighter" is what "pressed"
+looks like. Contrast ratios are held where the light theme holds them.
+
+The choice is light, dark or **follow the system**, and the third is the
+default — somebody whose laptop turns dark in the evening has already said what
+they want. An inline script in `<head>` applies it before the first paint,
+which is the one place a blocking script earns its keep: the alternative is a
+cream page repainted black a moment later.
+
+Two things deliberately do not follow the theme. `sheet` is true white in both,
+because a drawing is ink on white paper and showing one on a dark ground is
+showing a different drawing. And printing overrides the palette to black on
+white whatever is on screen — nobody wants a dark-mode invoice through a laser
+printer.
+
 ## Non-goals
 
 Not built, deliberately, and not to be added without a reason that traces back
