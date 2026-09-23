@@ -13,6 +13,7 @@ import {
   UserX,
 } from "lucide-react";
 import { FeatureAccordion } from "@/components/marketing/FeatureAccordion";
+import { HeroGrid } from "@/components/marketing/HeroGrid";
 import { Footer } from "@/components/marketing/Footer";
 import { MarketingNav } from "@/components/marketing/MarketingNav";
 
@@ -76,21 +77,13 @@ export default function Home() {
 function Hero() {
   return (
     <section className="relative overflow-hidden border-b border-rule">
-      {/* Drafting-paper grid. An architectural texture rather than a gradient,
-          and faint enough to read as paper rather than decoration. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.55]"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, #CBD1C0 1px, transparent 1px)," +
-            "linear-gradient(to bottom, #CBD1C0 1px, transparent 1px)",
-          backgroundSize: "64px 64px",
-          maskImage: "radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 75%)",
-          WebkitMaskImage:
-            "radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 75%)",
-        }}
-      />
+      {/* Drafting-paper grid, which lights up green under the cursor. An
+          architectural texture rather than a gradient, and faint enough to
+          read as paper rather than decoration until it is touched. Its own
+          component because it is the one interactive thing on an otherwise
+          static page, and this file exports `metadata` -- it has to stay a
+          server component. */}
+      <HeroGrid />
 
       <div className="relative mx-auto max-w-shell px-4 py-16 sm:px-8 sm:py-24">
         <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.15fr] lg:gap-6">
